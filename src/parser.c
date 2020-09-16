@@ -1619,13 +1619,14 @@ network parse_network_cfg_custom(char *filename, int batch, int time_steps)
         ++count;
         // 构建每一层之后, 如果之后还有层, 则更新params.h,params.w,params.c及params.inputs记录着上一层相应的输出参数
         if(n){  // 递归到最终, 其n为NULL.
-            if (l.antialiasing) {  //antialiasing抗锯齿标志, 如果为真强行设置所有的步长为1
+            //antialiasing抗锯齿标志, 如果为真强行设置所有的步长为1
+            if (l.antialiasing){
                 params.h = l.input_layer->out_h;
                 params.w = l.input_layer->out_w;
                 params.c = l.input_layer->out_c;
                 params.inputs = l.input_layer->outputs;
             }
-            else {
+            else{
                 params.h = l.out_h;  // 将l.out_h, l.out_w, l.out_c记录在params中, 作为下一层的网络输入尺寸.
                 params.w = l.out_w;
                 params.c = l.out_c;

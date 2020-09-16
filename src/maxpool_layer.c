@@ -85,7 +85,7 @@ maxpool_layer make_maxpool_layer(int batch, int h, int w, int c, int size, int s
 {
     maxpool_layer l = { (LAYER_TYPE)0 };  // 初始化l, 结构体初始化形式
     l.avgpool = avgpool;
-    if (avgpool) l.type = LOCAL_AVGPOOL;
+    if (avgpool) l.type = LOCAL_AVGPOOL;  // 因为有global average pooling操作, 所以这里会区分.
     else l.type = MAXPOOL;
     l.train = train;
 
@@ -96,11 +96,11 @@ maxpool_layer make_maxpool_layer(int batch, int h, int w, int c, int size, int s
         stride_x = stride_y = l.stride = l.stride_x = l.stride_y = 1; // use stride=1 in host-layer
     }
 
-    l.batch = batch;  // 一个batch中包含的图片数
+    l.batch = batch;  // 一个batch中包含的图片数(这里指的是mini-batch)
     l.h = h;          // 输入图片的高度
     l.w = w;          // 输入图片的宽度
     l.c = c;          // 输入图片的通道数
-    l.pad = padding;
+    l.pad = padding;  // padding数
     l.maxpool_depth = maxpool_depth;  //池化层每隔l.maxpool_depth执行一次pool操作
     l.out_channels = out_channels;
     if (maxpool_depth) {
@@ -109,12 +109,12 @@ maxpool_layer make_maxpool_layer(int batch, int h, int w, int c, int size, int s
         l.out_h = l.h;
     }
     else {
-        l.out_w = (w + padding - size) / stride_x + 1;  // 输出图像的宽度
-        l.out_h = (h + padding - size) / stride_y + 1;
-        l.out_c = c;  //输出图片的通道数
+        l.out_w = (w + padding - size) / stride_x + 1;  // 输出特征图的宽度
+        l.out_h = (h + padding - size) / stride_y + 1;  // 输出特征图的高度
+        l.out_c = c;                                    // 输出特征图的通道数
     }
     l.outputs = l.out_h * l.out_w * l.out_c;  //池化层对应一张输入图片的输出元素个数
-    l.inputs = h*w*c;  //池化层
+    l.inputs = h*w*c;  //池化层输入大小
     l.size = size;     //池化层池化窗口大小
     l.stride = stride_x;  //池化层步幅
     l.stride_x = stride_x;  //在x方向上的池化层步幅
@@ -124,7 +124,8 @@ maxpool_layer make_maxpool_layer(int batch, int h, int w, int c, int size, int s
     if (train) {
         // 训练的时候,用于保存每个最大池化窗口内的最大值对应的索引，方便之后的反向传播
         // 如果是平均池化层就不用了
-        if (!avgpool) l.indexes = (int*)xcalloc(output_size, sizeof(int));
+        if (!avgpool)
+            l.indexes = (int*)xcalloc(output_size, sizeof(int));
         //池化层的误差项
         l.delta = (float*)xcalloc(output_size, sizeof(float));
     }
@@ -160,7 +161,7 @@ maxpool_layer make_maxpool_layer(int batch, int h, int w, int c, int size, int s
     else cudnn_maxpool_setup(&l);
 
 #endif  // GPU
-    //计算池化层的参数量，以BFLOPs为单位，这是AlexeyAB DarkNet新增的
+    //计算池化层的计算量,以BFLOPs为单位
 	l.bflops = (l.size*l.size*l.c * l.out_h*l.out_w) / 1000000000.;
     if (avgpool) {
         // 构造池化层的时候在屏幕上打印信息
@@ -213,6 +214,7 @@ maxpool_layer make_maxpool_layer(int batch, int h, int w, int c, int size, int s
                 l.input_layer->weights[i + 8] = 1 / 16.f;
             }
         }
+        // TODO: CHEN_TAG, 2020-09-16, 明天弄清楚这里为什么要初始化l.input_layer->biases[i]
         for (i = 0; i < l.out_c; ++i) l.input_layer->biases[i] = 0;
 #ifdef GPU
         if (gpu_index >= 0) {

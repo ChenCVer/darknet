@@ -846,13 +846,18 @@ convolutional_layer make_convolutional_layer(int batch, int steps, int h, int w,
     else if (l.assisted_excitation) fprintf(stderr, "convAE");
     else fprintf(stderr, "conv  ");
 
-    if (groups > 1) fprintf(stderr, "%5d/%4d ", n, groups);
-    else           fprintf(stderr, "%5d      ", n);
+    if (groups > 1)
+        fprintf(stderr, "%5d/%4d ", n, groups);
+    else
+        fprintf(stderr, "%5d      ", n);
 
-    if (stride_x != stride_y) fprintf(stderr, "%2dx%2d/%2dx%2d ", size, size, stride_x, stride_y);
+    if (stride_x != stride_y)
+        fprintf(stderr, "%2dx%2d/%2dx%2d ", size, size, stride_x, stride_y);
     else {
-        if (dilation > 1) fprintf(stderr, "%2d x%2d/%2d(%1d)", size, size, stride_x, dilation);
-        else             fprintf(stderr, "%2d x%2d/%2d   ", size, size, stride_x);
+        if (dilation > 1)
+            fprintf(stderr, "%2d x%2d/%2d(%1d)", size, size, stride_x, dilation);
+        else
+            fprintf(stderr, "%2d x%2d/%2d   ", size, size, stride_x);
     }
 
     fprintf(stderr, "%4d x%4d x%4d -> %4d x%4d x%4d %5.3f BF\n", w, h, c, l.out_w, l.out_h, l.out_c, l.bflops);
@@ -926,20 +931,20 @@ void test_convolutional_layer()
     convolutional_layer l = make_convolutional_layer(1, 1, 5, 5, 3, 2, 1, 5, 2, 2, 1, 1, LEAKY, 1, 0, 0, 0, 0, 0, 0, NULL, 0, 0, 0);
     l.batch_normalize = 1;
     float data[] = {1,1,1,1,1,
-        1,1,1,1,1,
-        1,1,1,1,1,
-        1,1,1,1,1,
-        1,1,1,1,1,
-        2,2,2,2,2,
-        2,2,2,2,2,
-        2,2,2,2,2,
-        2,2,2,2,2,
-        2,2,2,2,2,
-        3,3,3,3,3,
-        3,3,3,3,3,
-        3,3,3,3,3,
-        3,3,3,3,3,
-        3,3,3,3,3};
+                    1,1,1,1,1,
+                    1,1,1,1,1,
+                    1,1,1,1,1,
+                    1,1,1,1,1,
+                    2,2,2,2,2,
+                    2,2,2,2,2,
+                    2,2,2,2,2,
+                    2,2,2,2,2,
+                    2,2,2,2,2,
+                    3,3,3,3,3,
+                    3,3,3,3,3,
+                    3,3,3,3,3,
+                    3,3,3,3,3,
+                    3,3,3,3,3};
     network_state state = {0};
     state.input = data;
     forward_convolutional_layer(l, state);
