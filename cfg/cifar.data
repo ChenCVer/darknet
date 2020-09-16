@@ -1,0 +1,6 @@
+classes=10
+train  = /home/georg/Documents/data/cifar/train.list
+valid  = /home/georg/Documents/data/cifar/test.list
+labels = /home/georg/Documents/data/cifar/labels.txt
+backup = /home/georg/Desktop/darknet/results
+top=1
