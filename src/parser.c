@@ -795,7 +795,7 @@ layer parse_reorg(list *options, size_params params)
 }
 
 layer parse_reorg_old(list *options, size_params params)
-{
+{   // TODO: CHEN_TAG 2020-9-17阅读到此!
     int stride = option_find_int(options, "stride", 1);
     int reverse = option_find_int_quiet(options, "reverse", 0);
 
@@ -1074,7 +1074,7 @@ route_layer parse_route(list *options, size_params params)
     int* sizes = (int*)xcalloc(n, sizeof(int));
     for(i = 0; i < n; ++i){
         int index = atoi(l);
-        l = strchr(l, ',')+1;
+        l = strchr(l, ',')+1;  // 查找给定字符串中某一个特定字符.
         if(index < 0) index = params.index + index;
         layers[i] = index;
         sizes[i] = params.net.layers[index].outputs;
@@ -1093,7 +1093,7 @@ route_layer parse_route(list *options, size_params params)
     for(i = 1; i < n; ++i){
         int index = layers[i];
         convolutional_layer next = params.net.layers[index];
-        if(next.out_w == first.out_w && next.out_h == first.out_h){
+        if(next.out_w == first.out_w && next.out_h == first.out_h){  // 两个特征层的拼接必须w和h相等.
             layer.out_c += next.out_c;
         }else{
             fprintf(stderr, " The width and height of the input layers are different. \n");
@@ -1113,7 +1113,7 @@ route_layer parse_route(list *options, size_params params)
     fprintf(stderr, "           ");
     if (layer.groups > 1) fprintf(stderr, "%d/%d", layer.group_id, layer.groups);
     else fprintf(stderr, "   ");
-    fprintf(stderr, "     -> %4d x%4d x%4d \n", layer.out_w, layer.out_h, layer.out_c);
+    fprintf(stderr, "      -> %4d x%4d x%4d \n", layer.out_w, layer.out_h, layer.out_c);
 
     return layer;
 }
@@ -1382,8 +1382,8 @@ network parse_network_cfg_custom(char *filename, int batch, int time_steps)
     printf("mini_batch = %d, total_batch = %d, time_steps = %d, is_train = %d \n",
            net.batch, net.batch * net.subdivisions, net.time_steps, params.train);
 
-    int avg_outputs = 0;
-    int avg_counter = 0;
+    int avg_outputs = 0;   // 网络平均输出量
+    int avg_counter = 0;   // 等同于网络层数, 除去[net]字段
     float bflops = 0;
     size_t workspace_size = 0;
     size_t max_inputs = 0;
@@ -1398,11 +1398,11 @@ network parse_network_cfg_custom(char *filename, int batch, int time_steps)
     // 此处stderr不是错误提示, 而是输出结果提示, 提示网络结构
     fprintf(stderr, "   layer   filters  size/stride(dil)      input                output\n");
     while(n){
-        params.index = count;
+        params.index = count;  // params.index成员记录的是网络层的编号
         fprintf(stderr, "%4d ", count);  // 这里是输出网络层的编号
         s = (section *)n->val;   // 获取配置options和type字段的值
         options = s->options;
-        layer l = { (LAYER_TYPE) 0};               // 初始化layer层
+        layer l = { (LAYER_TYPE) 0}; // 初始化layer层, layer结构体变量囊括了所有类型层的所需变量.
         LAYER_TYPE lt = string_to_layer_type(s->type);  // 获取该层对应的type字段
         if(lt == CONVOLUTIONAL){
             l = parse_convolutional(options, params);   // 解析cfg中卷积层参数, 创建卷积+激活层, return layer
@@ -1464,7 +1464,7 @@ network parse_network_cfg_custom(char *filename, int batch, int time_steps)
             int k;
             for (k = 0; k < l.n; ++k) {
                 net.layers[l.input_layers[k]].use_bin_output = 0;
-                net.layers[l.input_layers[k]].keep_delta_gpu = 1;
+                net.layers[l.input_layers[k]].keep_delta_gpu = 1;  // TODO: 意思是被拼接的层的误差项直接由route层传过去?
             }
         }else if (lt == UPSAMPLE) {
             l = parse_upsample(options, params, net);

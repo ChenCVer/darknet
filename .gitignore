@@ -10,7 +10,7 @@
 *.lib
 *.dylib
 mnist/
-data/voc/VOCdevkit/
+data/voc/
 caffe/
 grasp/
 images/

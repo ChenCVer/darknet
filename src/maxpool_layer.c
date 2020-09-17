@@ -125,7 +125,7 @@ maxpool_layer make_maxpool_layer(int batch, int h, int w, int c, int size, int s
         // 训练的时候,用于保存每个最大池化窗口内的最大值对应的索引，方便之后的反向传播
         // 如果是平均池化层就不用了
         if (!avgpool)
-            l.indexes = (int*)xcalloc(output_size, sizeof(int));
+            l.indexes = (int*)xcalloc(output_size, sizeof(int));  // 每个输元素, 记录他来自于输入窗口中的哪个元素的index
         //池化层的误差项
         l.delta = (float*)xcalloc(output_size, sizeof(float));
     }
@@ -214,7 +214,7 @@ maxpool_layer make_maxpool_layer(int batch, int h, int w, int c, int size, int s
                 l.input_layer->weights[i + 8] = 1 / 16.f;
             }
         }
-        // TODO: CHEN_TAG, 2020-09-16, 明天弄清楚这里为什么要初始化l.input_layer->biases[i]
+        // TODO: CHEN_TAG, 2020-09-16, 带BN的卷积层的偏置项的初始化, 怎么放在maxpool层做呢?
         for (i = 0; i < l.out_c; ++i) l.input_layer->biases[i] = 0;
 #ifdef GPU
         if (gpu_index >= 0) {

@@ -5,12 +5,13 @@
 #include <stdio.h>
 
 route_layer make_route_layer(int batch, int n, int *input_layers, int *input_sizes, int groups, int group_id)
-{
+{   // route层是将某些层的输出拼接在一起, 然后输出. 比如YOLO V2的第25层为route层, 他连接的是第16层, 则就是将第16层的输出结果
+    // 复制过来, 作为输出.
     fprintf(stderr,"route ");
     route_layer l = { (LAYER_TYPE)0 };
     l.type = ROUTE;
     l.batch = batch;
-    l.n = n;  // 这里指的是有多少个层参与拼接
+    l.n = n;                        // 这里指的是有多少个层参与拼接
     l.input_layers = input_layers;  // 指定要参与拼接的层
     l.input_sizes = input_sizes;    // 指定输入数据大小
     l.groups = groups;
@@ -18,7 +19,7 @@ route_layer make_route_layer(int batch, int n, int *input_layers, int *input_siz
     int i;
     int outputs = 0;  // 输出元素个数.
     for(i = 0; i < n; ++i){
-        fprintf(stderr," %d", input_layers[i]);
+        fprintf(stderr," %d", input_layers[i]);  // input_layers[i]即为网络层编号
         outputs += input_sizes[i];
     }
     outputs = outputs / groups;

@@ -541,7 +541,7 @@ convolutional_layer make_convolutional_layer(int batch, int steps, int h, int w,
 {
     int total_batch = batch*steps;
     int i;
-    convolutional_layer l = { (LAYER_TYPE)0 };  // 初始化卷积层
+    convolutional_layer l = { (LAYER_TYPE)0 };  // 初始化卷积层, convolutional_layer是layer的别名.
     l.type = CONVOLUTIONAL;
     l.train = train;
 
@@ -681,7 +681,7 @@ convolutional_layer make_convolutional_layer(int batch, int steps, int h, int w,
             l.rolling_mean = l.share_layer->rolling_mean;
             l.rolling_variance = l.share_layer->rolling_variance;
         }
-        else {
+        else { // 带有BN层的卷积层, 其卷积中的bias和BN的中β公用. 但是这个l.biases的初始化又是在maxpool层做的.
             l.scales = (float*)xcalloc(n, sizeof(float)); // 也即: y = γ*x̅ + β中的γ
             for (i = 0; i < n; ++i) {  // 有多少个卷积核(输出通道),就有多少个γ
                 l.scales[i] = 1;
@@ -696,12 +696,12 @@ convolutional_layer make_convolutional_layer(int batch, int steps, int h, int w,
                 l.mean_delta = (float*)xcalloc(n, sizeof(float));      // 损失函数对均值的导数: ∂L/∂μ
                 l.variance_delta = (float*)xcalloc(n, sizeof(float));  // 损失函数对方差的导数: ∂L/∂δ
             }
-            l.rolling_mean = (float*)xcalloc(n, sizeof(float));      // 均值的滑动平均
-            l.rolling_variance = (float*)xcalloc(n, sizeof(float));  // 方差的滑动平均
+            l.rolling_mean = (float*)xcalloc(n, sizeof(float));      // 均值的滑动平均, test模式使用.
+            l.rolling_variance = (float*)xcalloc(n, sizeof(float));  // 方差的滑动平均, test模式使用.
         }
 
 #ifndef GPU
-        if (train) {  // 暂时不清楚?
+        if (train) {  // TODO: 2020-9-17, 后续弄清楚l.x和l.x_norm是用来记录什么的?
             l.x = (float*)xcalloc(total_batch * l.outputs, sizeof(float));
             l.x_norm = (float*)xcalloc(total_batch * l.outputs, sizeof(float));
         }
@@ -849,7 +849,7 @@ convolutional_layer make_convolutional_layer(int batch, int steps, int h, int w,
     if (groups > 1)
         fprintf(stderr, "%5d/%4d ", n, groups);
     else
-        fprintf(stderr, "%5d      ", n);
+        fprintf(stderr, "%5d      ", n);  // 卷积核个数
 
     if (stride_x != stride_y)
         fprintf(stderr, "%2dx%2d/%2dx%2d ", size, size, stride_x, stride_y);
@@ -857,7 +857,7 @@ convolutional_layer make_convolutional_layer(int batch, int steps, int h, int w,
         if (dilation > 1)
             fprintf(stderr, "%2d x%2d/%2d(%1d)", size, size, stride_x, dilation);
         else
-            fprintf(stderr, "%2d x%2d/%2d   ", size, size, stride_x);
+            fprintf(stderr, "%2d x%2d /%2d   ", size, size, stride_x);
     }
 
     fprintf(stderr, "%4d x%4d x%4d -> %4d x%4d x%4d %5.3f BF\n", w, h, c, l.out_w, l.out_h, l.out_c, l.bflops);
