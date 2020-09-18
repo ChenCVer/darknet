@@ -14,7 +14,7 @@ layer make_reorg_old_layer(int batch, int w, int h, int c, int stride, int rever
     l.h = h;
     l.w = w;
     l.c = c;
-    if(reverse){
+    if(reverse){  // 这个reverse表示, 13x13x256 -> 26x26x64.
         l.out_w = w*stride;
         l.out_h = h*stride;
         l.out_c = c/(stride*stride);

@@ -100,22 +100,24 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
 #ifdef GPU
         cuda_set_device(gpus[k]);
 #endif
-        // 解析网络配置文件, 并初始化网络结构
+        // 解析网络配置文件,并初始化网络结构,
         nets[k] = parse_network_cfg(cfgfile);
         nets[k].benchmark_layers = benchmark_layers;
         // 加载预训练模型
         if (weightfile) {
             load_weights(&nets[k], weightfile);
         }
-        // 如果有clear参数，把网络seen清空为0
+        // 如果有clear参数,把网络seen清空为0
         if (clear) {
             *nets[k].seen = 0;  // 目前已经读入的图片张数(网络已经处理的图片张数)
             *nets[k].cur_iteration = 0;
         }
-        nets[k].learning_rate *= ngpus;
+        nets[k].learning_rate *= ngpus;  // 学习率和gpus关系, gpu数目越多, leraning_rate越大.
     }
     srand(time(0));  // 再次设计随机数种子
     network net = nets[0];     // 第一块显卡上的网络
+    // TODO: 2020-9-18: Qustion: 回家用自己电脑验证下: visualize_network(nets[0]);
+    // visualize_network(nets[0]);
     // 实际的batch_size等于batch和subdivisions的积
     const int actual_batch_size = net.batch * net.subdivisions;
     if (actual_batch_size == 1) {
@@ -156,11 +158,11 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
     float best_map = mean_average_precision;  // 最好的mAP值
     // 为什么要把网络参数存储到args参数列表里面, 这就和Darknet加载数据的机制有关.
     load_args args = { 0 };
-    args.w = net.w;      // 网络输入宽
-    args.h = net.h;      // 网络输入高
-    args.c = net.c;      // 网络输入通道
-    args.paths = paths;  // 图片路径列表
-    args.n = imgs;       // batchsize
+    args.w = net.w;        // 网络输入宽
+    args.h = net.h;        // 网络输入高
+    args.c = net.c;        // 网络输入通道
+    args.paths = paths;    // 图片路径列表
+    args.n = imgs;         // batchsize
     args.m = plist->size;  // 数据集总量
     args.classes = classes;  // 数据集类别数(不含背景)
     args.flip = net.flip;
@@ -202,7 +204,7 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
     img = draw_train_chart(windows_name, max_img_loss, net.max_batches, number_of_lines, img_size, dont_show, chart_path);
 #endif    //OPENCV
     if (net.contrastive && args.threads > net.batch/2) args.threads = net.batch / 2;
-    if (net.track) {
+    if (net.track) {  // net.track是啥?
         args.track = net.track;
         args.augment_speed = net.augment_speed;
         if (net.sequential_subdivisions) args.threads = net.sequential_subdivisions * ngpus;
@@ -223,14 +225,14 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
     int count = 0;
     double time_remaining, avg_time = -1, alpha_time = 0.01;
 
-    //while(i*imgs < N*120){
+    // 开始循环训练网络: 虽然写的是batches, 实际按照iterations进行迭代的
     while (get_current_iteration(net) < net.max_batches) {
         // count++ % 10 == 0 每隔10个epoch改变网络输入的图像分辨率, 步长: net.resize_step
         if (l.random && count++ % 10 == 0) {
             float rand_coef = 1.4;
             if (l.random != 1.0) rand_coef = l.random;
             printf("Resizing, random_coef = %.2f \n", rand_coef);
-            float random_val = rand_scale(rand_coef);    // *x or /x
+            float random_val = rand_scale(rand_coef);    // *x or 1/x
             int dim_w = roundl(random_val*init_w / net.resize_step + 1) * net.resize_step;
             int dim_h = roundl(random_val*init_h / net.resize_step + 1) * net.resize_step;
             if (random_val < 1 && (dim_w > init_w || dim_h > init_h)) dim_w = init_w, dim_h = init_h;
@@ -240,14 +242,14 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
 
             // at the beginning (check if enough memory) and at the end (calc rolling mean/variance)
             if (avg_loss < 0 || get_current_iteration(net) > net.max_batches - 100) {
-                dim_w = max_dim_w;
+                dim_w = max_dim_w;  // 意思在刚开始结果回合或最后几个回合, 训练的宽和高都用最大输入尺寸.
                 dim_h = max_dim_h;
             }
 
-            if (dim_w < net.resize_step) dim_w = net.resize_step;
+            if (dim_w < net.resize_step) dim_w = net.resize_step;  // 允许的最小输入尺寸: net.resize_step
             if (dim_h < net.resize_step) dim_h = net.resize_step;
             int dim_b = (init_b * max_dim_w * max_dim_h) / (dim_w * dim_h);
-            int new_dim_b = (int)(dim_b * 0.8);
+            int new_dim_b = (int)(dim_b * 0.8);  // init_b起什么作用?
             if (new_dim_b > init_b) dim_b = new_dim_b;
 
             args.w = dim_w;  // 修改网络输入图像的分辨率
@@ -274,7 +276,7 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
             train = buffer;
             free_data(train);
             load_thread = load_data(args);
-
+            // 由于img_input_sizes发生改变, 因此, 对应的网络结构和参数也需要对应改变.
             for (k = 0; k < ngpus; ++k) {
                 resize_network(nets + k, dim_w, dim_h);
             }
@@ -297,16 +299,16 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
         /*
         int k;
         for(k = 0; k < l.max_boxes; ++k){
-        box b = float_to_box(train.y.vals[10] + 1 + k*5);
-        if(!b.x) break;
-        printf("loaded: %f %f %f %f\n", b.x, b.y, b.w, b.h);
+            box b = float_to_box(train.y.vals[10] + 1 + k*5);
+            if(!b.x) break;
+            printf("loaded: %f %f %f %f\n", b.x, b.y, b.w, b.h);
         }
         image im = float_to_image(448, 448, 3, train.X.vals[10]);
         int k;
         for(k = 0; k < l.max_boxes; ++k){
-        box b = float_to_box(train.y.vals[10] + 1 + k*5);
-        printf("%d %d %d %d\n", truth.x, truth.y, truth.w, truth.h);
-        draw_bbox(im, b, 8, 1,0,0);
+            box b = float_to_box(train.y.vals[10] + 1 + k*5);
+            printf("%d %d %d %d\n", truth.x, truth.y, truth.w, truth.h);
+            draw_bbox(im, b, 8, 1,0,0);
         }
         save_image(im, "truth11");
         */

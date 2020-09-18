@@ -663,10 +663,10 @@ layer parse_gaussian_yolo(list *options, size_params params) // Gaussian_YOLOv3
 
 layer parse_region(list *options, size_params params)
 {
-    int coords = option_find_int(options, "coords", 4);
-    int classes = option_find_int(options, "classes", 20);
-    int num = option_find_int(options, "num", 1);
-    int max_boxes = option_find_int_quiet(options, "max", 200);
+    int coords = option_find_int(options, "coords", 4);     // x, y, w, h
+    int classes = option_find_int(options, "classes", 20);  // num_classes
+    int num = option_find_int(options, "num", 1);           // num_anchors
+    int max_boxes = option_find_int_quiet(options, "max", 200);  // 一张图片中gt的最大数量
 
     layer l = make_region_layer(params.batch, params.w, params.h, num, classes, coords, max_boxes);
     if (l.outputs != params.inputs) {
@@ -679,17 +679,17 @@ layer parse_region(list *options, size_params params)
     l.log = option_find_int_quiet(options, "log", 0);
     l.sqrt = option_find_int_quiet(options, "sqrt", 0);
 
-    l.softmax = option_find_int(options, "softmax", 0);
+    l.softmax = option_find_int(options, "softmax", 0);  // 是否使用softmax函数
     l.focal_loss = option_find_int_quiet(options, "focal_loss", 0);
     //l.max_boxes = option_find_int_quiet(options, "max",30);
-    l.jitter = option_find_float(options, "jitter", .2);
+    l.jitter = option_find_float(options, "jitter", .2);  // 通过抖动增加噪声来抑制过拟合
     l.resize = option_find_float_quiet(options, "resize", 1.0);
-    l.rescore = option_find_int_quiet(options, "rescore",0);
+    l.rescore = option_find_int_quiet(options, "rescore",0);  // 暂理解为一个开关,非0时通过重打分来调整l.delta(预测值与真实值的差)
 
-    l.thresh = option_find_float(options, "thresh", .5);
+    l.thresh = option_find_float(options, "thresh", .5);  // 阈值
     l.classfix = option_find_int_quiet(options, "classfix", 0);
     l.absolute = option_find_int_quiet(options, "absolute", 0);
-    l.random = option_find_float_quiet(options, "random", 0);
+    l.random = option_find_float_quiet(options, "random", 0);  // random为1时会启用Multi-Scale Training, 随机使用不同尺寸的图片训练
 
     l.coord_scale = option_find_float(options, "coord_scale", 1);
     l.object_scale = option_find_float(options, "object_scale", 1);
@@ -703,7 +703,7 @@ layer parse_region(list *options, size_params params)
     char *map_file = option_find_str(options, "map", 0);
     if (map_file) l.map = read_map(map_file);
 
-    char *a = option_find_str(options, "anchors", 0);
+    char *a = option_find_str(options, "anchors", 0);  // 获取anchors信息
     if(a){
         int len = strlen(a);
         int n = 1;
@@ -713,7 +713,7 @@ layer parse_region(list *options, size_params params)
         }
         for(i = 0; i < n && i < num*2; ++i){
             float bias = atof(a);
-            l.biases[i] = bias;
+            l.biases[i] = bias;  // 从这里看出, 用来存储每个anchor的宽高信息.
             a = strchr(a, ',')+1;
         }
     }
@@ -795,7 +795,7 @@ layer parse_reorg(list *options, size_params params)
 }
 
 layer parse_reorg_old(list *options, size_params params)
-{   // TODO: CHEN_TAG 2020-9-17阅读到此!
+{   // TODO: CHEN_TAG 2020-9-17, reorg层, 特征重排.比如将26x26x64 -> 13x13x256.
     int stride = option_find_int(options, "stride", 1);
     int reverse = option_find_int_quiet(options, "reverse", 0);
 
@@ -1883,7 +1883,7 @@ void save_weights_upto(network net, char *filename, int cutoff)
     FILE *fp = fopen(filename, "wb");
     if(!fp) file_error(filename);
 
-    int major = MAJOR_VERSION;
+    int major = MAJOR_VERSION;  // 版本号, 同时还用于区分网络类型, 是否需要转置, 已设置死.
     int minor = MINOR_VERSION;
     int revision = PATCH_VERSION;
     fwrite(&major, sizeof(int), 1, fp);
@@ -2048,13 +2048,13 @@ void load_convolutional_weights(layer l, FILE *fp)
         //load_convolutional_weights_binary(l, fp);
         //return;
     }
-    int num = l.nweights;
+    int num = l.nweights;  // 首先获取该卷积层有多少个参数.
     int read_bytes;
-    read_bytes = fread(l.biases, sizeof(float), l.n, fp);
+    read_bytes = fread(l.biases, sizeof(float), l.n, fp);  // 读取偏置项, 赋值给l.biases
     if (read_bytes > 0 && read_bytes < l.n) printf("\n Warning: Unexpected end of wights-file! l.biases - l.index = %d \n", l.index);
     //fread(l.weights, sizeof(float), num, fp); // as in connected layer
     if (l.batch_normalize && (!l.dontloadscales)){
-        read_bytes = fread(l.scales, sizeof(float), l.n, fp);
+        read_bytes = fread(l.scales, sizeof(float), l.n, fp);  // 读取BN层中gamma参数
         if (read_bytes > 0 && read_bytes < l.n) printf("\n Warning: Unexpected end of wights-file! l.scales - l.index = %d \n", l.index);
         read_bytes = fread(l.rolling_mean, sizeof(float), l.n, fp);
         if (read_bytes > 0 && read_bytes < l.n) printf("\n Warning: Unexpected end of wights-file! l.rolling_mean - l.index = %d \n", l.index);
@@ -2076,14 +2076,14 @@ void load_convolutional_weights(layer l, FILE *fp)
             fill_cpu(l.n, 0, l.rolling_variance, 1);
         }
     }
-    read_bytes = fread(l.weights, sizeof(float), num, fp);
+    read_bytes = fread(l.weights, sizeof(float), num, fp);  // 读取卷积层权重.
     if (read_bytes > 0 && read_bytes < l.n) printf("\n Warning: Unexpected end of wights-file! l.weights - l.index = %d \n", l.index);
     //if(l.adam){
     //    fread(l.m, sizeof(float), num, fp);
     //    fread(l.v, sizeof(float), num, fp);
     //}
     //if(l.c == 3) scal_cpu(num, 1./256, l.weights, 1);
-    if (l.flipped) {
+    if (l.flipped) {  // TODO: 这个flipped感觉像是对l.weights进行转置操作, 为什么要这么做呢?
         transpose_matrix(l.weights, (l.c/l.groups)*l.size*l.size, l.n);
     }
     //if (l.binary) binarize_weights(l.weights, l.n, (l.c/l.groups)*l.size*l.size, l.weights);
@@ -2109,8 +2109,9 @@ void load_shortcut_weights(layer l, FILE *fp)
 #endif
 }
 
+// 关于darknet权重文件结构说明详见: https://www.it610.com/article/1280562552354390016.htm
 void load_weights_upto(network *net, char *filename, int cutoff)
-{
+{    // cutoff 网络层数, 比如YOLO V2 ---> 网络层编号: 0~31. 这里cutoff则为: 32. 也即需要导入的网络层数.
 #ifdef GPU
     if(net->gpu_index >= 0){
         cuda_set_device(net->gpu_index);
@@ -2122,25 +2123,25 @@ void load_weights_upto(network *net, char *filename, int cutoff)
     FILE *fp = fopen(filename, "rb");
     if(!fp) file_error(filename);
 
-    int major;
-    int minor;
-    int revision;
-    fread(&major, sizeof(int), 1, fp);
-    fread(&minor, sizeof(int), 1, fp);
+    int major;  // 版本号参数major(int型, 4字节)
+    int minor;  // 版本号参数minor(int型, 4字节)
+    int revision;  // 版本号参数revision(int型, 4字节)
+    fread(&major, sizeof(int), 1, fp);  // 从文件流fp中, 读取n=1个块大小为sizeof(int)的数据放入major指向的内存空间中
+    fread(&minor, sizeof(int), 1, fp);  // 通过major和minor判断iseen类型, 从而取出权重文件权重文件中存储的seen参数
     fread(&revision, sizeof(int), 1, fp);
     if ((major * 10 + minor) >= 2) {
         printf("\n seen 64");
         uint64_t iseen = 0;
-        fread(&iseen, sizeof(uint64_t), 1, fp);
+        fread(&iseen, sizeof(uint64_t), 1, fp);  // 训练过的图片个数seen(size_t型,64位操作系统下8字节)
         *net->seen = iseen;
     }
     else {
         printf("\n seen 32");
         uint32_t iseen = 0;
-        fread(&iseen, sizeof(uint32_t), 1, fp);
-        *net->seen = iseen;
+        fread(&iseen, sizeof(uint32_t), 1, fp);  // 从fp中读取目前net已经训练了多少图片
+        *net->seen = iseen;  // 目前已经读入的图片张数(网络已经处理的图片张数)
     }
-    *net->cur_iteration = get_current_batch(*net);
+    *net->cur_iteration = get_current_batch(*net);  // 读取出当前的net迭代次数, 并赋值给网络.
     printf(", trained: %.0f K-images (%.0f Kilo-batches_64) \n", (float)(*net->seen / 1000), (float)(*net->seen / 64000));
     int transpose = (major > 1000) || (minor > 1000);
 

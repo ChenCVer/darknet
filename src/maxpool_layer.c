@@ -306,7 +306,8 @@ void forward_maxpool_layer(const maxpool_layer l, network_state state)
 
 
     if (!state.train && l.stride_x == l.stride_y) {
-        forward_maxpool_layer_avx(state.input, l.output, l.indexes, l.size, l.w, l.h, l.out_w, l.out_h, l.c, l.pad, l.stride, l.batch);
+        forward_maxpool_layer_avx(state.input, l.output, l.indexes, l.size, l.w, l.h,
+                                  l.out_w, l.out_h, l.c, l.pad, l.stride, l.batch);
     }
     else
     {
@@ -323,10 +324,12 @@ void forward_maxpool_layer(const maxpool_layer l, network_state state)
             // 对于每张输入图片,将得到通道数一样的输出图,以输出图为基准,按输出图通道,行,列依次遍历
             // (这对应图像在l.output的存储方式,每张图片按行铺排成一大行,然后图片与图片之间再并成一行)。
             // 以输出图为基准进行遍历,最终循环的总次数刚好覆盖池化核在输入图片不同位置进行池化操作。
-            for (k = 0; k < c; ++k) {                     // c也即是out_c  // 遍历每一个通道.
+            for (k = 0; k < c; ++k) {                     // c也即是out_c , 遍历每一个通道.
                 for (i = 0; i < h; ++i) {                 // pool层输出的高, out_h 
                     for (j = 0; j < w; ++j) {             // pool层输出的宽, out_w
                         // out_index为输出图中的索引:out_index = b * c * w * h + k * w * h + i * w + j, 展开写可能更为清晰些
+                        // 可以解读为: 每张图像都有c*h*w大小的特征图, b张图像则总共有b*w*h*c. 这里可以说: 第b张图像中的所有特征图的
+                        // 第k张特征图中的第i行第j列位置的索引为: out_index
                         int out_index = j + w*(i + h*(k + c*b));
                         float max = -FLT_MAX;  // FLT_MAX为c语言中float.h定义的最大浮点数, 此处初始化最大元素值为最小浮点数
                         int max_i = -1;        // 下标初始化为-1.
@@ -346,20 +349,20 @@ void forward_maxpool_layer(const maxpool_layer l, network_state state)
                                 // float* X = (float*)xcalloc(batch * d.X.cols, sizeof(float));
                                 // state.input = X;
                                 float val = (valid != 0) ? state.input[index] : -FLT_MAX;
-                                max_i = (val > max) ? index : max_i;
-                                max = (val > max) ? val : max;
+                                max_i = (val > max) ? index : max_i;  // 记住最大值对应的index位置
+                                max = (val > max) ? val : max;        // 记住对应的值.
                             }
                         }
                         // output_size = l.out_h * l.out_w * l.out_c * batch;
                         // l.output = (float*)xcalloc(output_size, sizeof(float));
                         l.output[out_index] = max;
-                        if (l.indexes) l.indexes[out_index] = max_i;
+                        if (l.indexes) l.indexes[out_index] = max_i;  // 用于反向传播, 最大索引矩阵.
                     }
                 }
             }
         }
     }
-
+    // TODO: CHEN_TAG, 2020-09-18, 分析完maxpooling层的前向传播.
     if (l.antialiasing) {
         network_state s = { 0 };
         s.train = state.train;

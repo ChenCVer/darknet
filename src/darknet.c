@@ -468,7 +468,7 @@ int main(int argc, char **argv)
 		if (!argv[i]) {
 		    continue;
 		}
-		// TODO: argv是char* []类型, 在这边
+		// TODO: argv是char* []类型
         // strip_args(argv[i]);
 	}
 

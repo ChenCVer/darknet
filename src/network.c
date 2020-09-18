@@ -280,18 +280,19 @@ void forward_network(network net, network_state state)
         // 获取当前层
         layer l = net.layers[i];
         // 如果当前层的l.delta已经动态分配了内存, 则调用fill_cpu()函数将其所有元素初始化为0
-        if(l.delta && state.train){
+        if(l.delta && state.train){  // l.delta不为NULL, 且为训练状态.
             // 第一个参数为l.delta的元素个数, 第二个参数为初始化值, 为0
-            scal_cpu(l.outputs * l.batch, 0, l.delta, 1);
+            scal_cpu(l.outputs * l.batch, 0, l.delta, 1);  // l.delta[i*1] *= 0.
         }
-        //double time = get_time_point();
+//        double time = get_time_point();
         // 前向传播: 完成当前层前向推理
-        l.forward(l, state);
+        l.forward(l, state);  // 函数指针, 实现多态.
         // 完成某一层的推理时, 置网络的输入为当前层的输出(这将成为下一层网络的输入), 注意此处更改的是state, 而非原始的net
-        //printf("%d - Predicted in %lf milli-seconds.\n", i, ((double)get_time_point() - time) / 1000);
+//        printf("%d - Predicted in %lf milli-seconds.\n", i, ((double)get_time_point() - time) / 1000);
         state.input = l.output;  // l.output记录网络某一层的输出结果
 
         /*
+        // debug:
         float avg_val = 0;
         int k;
         for (k = 0; k < l.outputs; ++k) avg_val += l.output[k];
@@ -396,7 +397,7 @@ float train_network_datum(network net, float *x, float *y)
 #ifdef GPU
     if(gpu_index >= 0) return train_network_datum_gpu(net, x, y);
 #endif
-    network_state state={0};
+    network_state state={0};  // 用network_state结构体记录网络需要输入和其他状态信息
     *net.seen += net.batch;  // 更新目前已经处理的图片数量: 每次处理一个batch, 故直接添加l.batch
     state.index = 0;
     state.net = net;  // 记录下当前的网络状态
@@ -476,7 +477,7 @@ float train_network_waitkey(network net, data d, int wait_key)
         sum += err;
         if(wait_key) wait_key_cv(5);
     }
-    (*net.cur_iteration) += 1;  // 迭代次数
+    (*net.cur_iteration) += 1;  // 每跑一个batch大小的数据, cur_iteration都会+1, net->seen则为: net->cur_iteration*batch*subdivs
 #ifdef GPU
     update_network_gpu(net);
 #else   // GPU

@@ -17,15 +17,15 @@ layer make_batchnorm_layer(int batch, int w, int h, int c, int train)
     layer.n = layer.c;
     // layer.output为该层所有的输出（包括mini-batch所有输入图片的输出）
     layer.output = (float*)xcalloc(h * w * c * batch, sizeof(float));
-    //layer.delta 是该层的敏感度图，和输出的维度想同
+    //layer.delta 是该层的敏感度图, 和输出的维度想同
     layer.delta = (float*)xcalloc(h * w * c * batch, sizeof(float));
     layer.inputs = w*h*c;  //mini-batch中每张输入图片的像素元素个数
     layer.outputs = layer.inputs;  // 对应每张输入图片的所有输出特征图的总元素个数（每张输入图片会得到n也即layer.out_c张特征图）
 
-    layer.biases = (float*)xcalloc(c, sizeof(float));         // BN层特有参数，偏置系数
+    layer.biases = (float*)xcalloc(c, sizeof(float));         // BN层特有参数,偏置系数
     layer.bias_updates = (float*)xcalloc(c, sizeof(float));   // 偏置系数的敏感度图
 
-    layer.scales = (float*)xcalloc(c, sizeof(float));         // BN层特有参数，缩放系数
+    layer.scales = (float*)xcalloc(c, sizeof(float));         // BN层特有参数,缩放系数
     layer.scale_updates = (float*)xcalloc(c, sizeof(float));  // 缩放系数的敏感度图
     int i;
     for(i = 0; i < c; ++i){
@@ -35,8 +35,8 @@ layer make_batchnorm_layer(int batch, int w, int h, int c, int train)
     layer.mean = (float*)xcalloc(c, sizeof(float));      // mean 一个batch中所有图片的均值，分通道求取
     layer.variance = (float*)xcalloc(c, sizeof(float));  // variance 一个batch中所有图片的方差，分通道求取
 
-    layer.rolling_mean = (float*)xcalloc(c, sizeof(float));     // 均值的滑动平均，影子变量
-    layer.rolling_variance = (float*)xcalloc(c, sizeof(float)); // 方差的滑动平均，影子变量
+    layer.rolling_mean = (float*)xcalloc(c, sizeof(float));     // 均值的滑动平均
+    layer.rolling_variance = (float*)xcalloc(c, sizeof(float)); // 方差的滑动平均
 
     layer.forward = forward_batchnorm_layer;
     layer.backward = backward_batchnorm_layer;
@@ -205,7 +205,7 @@ void forward_batchnorm_layer(layer l, network_state state)
 {
     //如果是batchnormal层,则直接输出等于输入
     if(l.type == BATCHNORM)
-        copy_cpu(l.outputs*l.batch, state.input, 1, l.output, 1);
+        copy_cpu(l.outputs*l.batch, state.input, 1, l.output, 1);  // l.output[i*1] = state.input[i*1]
     if(l.type == CONNECTED){
         //全链接层, 看成通道数为l.outputs,特征图长宽为1
         l.out_c = l.outputs;
@@ -217,14 +217,19 @@ void forward_batchnorm_layer(layer l, network_state state)
         mean_cpu(l.output, l.batch, l.out_c, l.out_h*l.out_w, l.mean);                  // 求均值
         variance_cpu(l.output, l.mean, l.batch, l.out_c, l.out_h*l.out_w, l.variance);  // 求方差
         //求均值的滑动平均, 预测时, 均值的就是这个值
+        // l.rolling_mean[i*1] *= 0.9, i∈[0, l.out_c)
         scal_cpu(l.out_c, .9, l.rolling_mean, 1);
+        // l.rolling_mean[i*1] += 0.1*l.mean[i*1], i∈[0, l.out_c)
         axpy_cpu(l.out_c, .1, l.mean, 1, l.rolling_mean, 1);
+
         //求方差的滑动平均,预测时,方差用的就是这个值,可以看非训练状态时normalize_cpu()函数的实现和参数
         scal_cpu(l.out_c, .9, l.rolling_variance, 1);  // 推理时用到的方差
         axpy_cpu(l.out_c, .1, l.variance, 1, l.rolling_variance, 1);
 
+        // l.x[i*1] = l.output[i*1]
         copy_cpu(l.outputs*l.batch, l.output, 1, l.x, 1);
-        // 对应公式: (l.output - l.mean) / (sqrt(l.variance) + ε)
+
+        // 对应公式: l.output = (l.output - l.mean) / (sqrt(l.variance) + ε)
         normalize_cpu(l.output, l.mean, l.variance, l.batch, l.out_c, l.out_h*l.out_w);
         //将normalize_cpu函数执行的结果保存到l.x_norm,用于反向传播时相关参数梯度的计算
         copy_cpu(l.outputs*l.batch, l.output, 1, l.x_norm, 1);

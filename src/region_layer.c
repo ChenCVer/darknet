@@ -23,18 +23,18 @@ region_layer make_region_layer(int batch, int w, int h, int n, int classes, int 
     region_layer l = { (LAYER_TYPE)0 };
     l.type = REGION;
 
-    l.n = n;  // anchors_nums,
-    l.batch = batch;  // mini_batch大小
-    l.h = h;  // 输出特征图高度
-    l.w = w;  // 输出特征图高度
+    l.n = n;              // anchors_nums,
+    l.batch = batch;      // mini_batch大小
+    l.h = h;              // 输出特征图高度
+    l.w = w;              // 输出特征图高度
     l.classes = classes;  // 预测类别数
     l.coords = coords;    // 一个边界框的参数(x,y,w,h)
-    l.cost = (float*)xcalloc(1, sizeof(float));  // 损失
-    l.biases = (float*)xcalloc(n * 2, sizeof(float));
+    l.cost = (float*)xcalloc(1, sizeof(float));        // 损失值
+    l.biases = (float*)xcalloc(n * 2, sizeof(float));  // 用来存储anchor的宽高信息.
     l.bias_updates = (float*)xcalloc(n * 2, sizeof(float));
     // 一张图片经过backbone网络之后, 输出的特征量大小: out_w*out_h*num_anchors*(num_cls + num_coords + conf)
     l.outputs = h*w*n*(classes + coords + 1);
-    l.inputs = l.outputs;  // 对于region_layer, 输入和输出的元素个数相等
+    l.inputs = l.outputs;     // 对于region_layer, 输入和输出的元素个数相等
     l.max_boxes = max_boxes;  // 一张图片中允许的最大gt数目
     l.truth_size = 4 + 2;     // 一个gt框包含的参数信息: x,y,w,h,cls_id, 这里有6个, 不知道第6个参数是什么
     l.truths = max_boxes*l.truth_size;

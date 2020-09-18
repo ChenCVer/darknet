@@ -701,7 +701,11 @@ convolutional_layer make_convolutional_layer(int batch, int steps, int h, int w,
         }
 
 #ifndef GPU
-        if (train) {  // TODO: 2020-9-17, 后续弄清楚l.x和l.x_norm是用来记录什么的?
+        if (train) {
+            // TODO: 2020-9-17, 从卷积层forward_batchnorm_layer()函数看出: l.x和l.x_norm用于后续反向传播
+            // copy_cpu(l.outputs*l.batch, l.output, 1, l.x, 1) -> l.x = l.output
+            // l.output = (l.output - l.mean) / (sqrt(l.variance) + ε)
+            // copy_cpu(l.outputs*l.batch, l.output, 1, l.x_norm, 1); -> l.x_norm = l.output
             l.x = (float*)xcalloc(total_batch * l.outputs, sizeof(float));
             l.x_norm = (float*)xcalloc(total_batch * l.outputs, sizeof(float));
         }
@@ -966,7 +970,7 @@ void resize_convolutional_layer(convolutional_layer *l, int w, int h)
     l->outputs = l->out_h * l->out_w * l->out_c;
     l->inputs = l->w * l->h * l->c;
 
-
+    // realloc(void* ptr, new_size)函数: 改变ptr所指内存区域的大小为new_size长度.
     l->output = (float*)xrealloc(l->output, total_batch * l->outputs * sizeof(float));
     if (l->train) {
         l->delta = (float*)xrealloc(l->delta, total_batch * l->outputs * sizeof(float));
@@ -981,7 +985,8 @@ void resize_convolutional_layer(convolutional_layer *l, int w, int h)
         //l->binary_input = realloc(l->inputs*l->batch, sizeof(float));
     }
 
-    if (l->activation == SWISH || l->activation == MISH || l->activation == HARD_MISH) l->activation_input = (float*)realloc(l->activation_input, total_batch*l->outputs * sizeof(float));
+    if (l->activation == SWISH || l->activation == MISH || l->activation == HARD_MISH)
+        l->activation_input = (float*)realloc(l->activation_input, total_batch*l->outputs * sizeof(float));
 #ifdef GPU
     if (old_w < w || old_h < h || l->dynamic_minibatch) {
         if (l->train) {
@@ -1295,7 +1300,7 @@ void forward_convolutional_layer(convolutional_layer l, network_state state)
     int i, j;
     // 初始化输出l.output全为0.0; 输入l.outputs*l.batch为输出的总元素个数, 其中l.outputs为batch
     // 中一个输入对应的输出的所有元素的个数, l.batch为一个batch输入包含的图片张数; 0表示初始化所有输出为0.
-    fill_cpu(l.outputs*l.batch, 0, l.output, 1);
+    fill_cpu(l.outputs*l.batch, 0, l.output, 1);  // l.output[i*1] *= 0
 
     if (l.xnor && (!l.align_bit_weights || state.train)) {
         if (!l.align_bit_weights || state.train) {
@@ -1499,7 +1504,7 @@ void forward_convolutional_layer(convolutional_layer l, network_state state)
                 // c为gemm()计算得到的值,包含一张输入图片得到的所有输出特征图(每个卷积核得到一张特征图),c中一行代表一张特征图,
                 // 各特征图铺排开成一行后,再将所有特征图并成一大行,存储在c中,因此c可视作有l.n行,l.out_h*l.out_w列。
                 // 详细查看该函数注释(比较复杂).
-                gemm(0, 0, m, n, k, 1, a, k, b, n, 1, c, n);
+                gemm(0, 0, m, n, k, 1, a, k, b, n, 1, c, n);  // 执行矩阵乘法.
                 // bit-count to float
             }
             //c += n*m;
@@ -1522,7 +1527,7 @@ void forward_convolutional_layer(convolutional_layer l, network_state state)
     else if (l.activation == NORM_CHAN) activate_array_normalize_channels(l.output, l.outputs*l.batch, l.batch, l.out_c, l.out_w*l.out_h, l.output);
     else if (l.activation == NORM_CHAN_SOFTMAX) activate_array_normalize_channels_softmax(l.output, l.outputs*l.batch, l.batch, l.out_c, l.out_w*l.out_h, l.output, 0);
     else if (l.activation == NORM_CHAN_SOFTMAX_MAXVAL) activate_array_normalize_channels_softmax(l.output, l.outputs*l.batch, l.batch, l.out_c, l.out_w*l.out_h, l.output, 1);
-    else activate_array_cpu_custom(l.output, l.outputs*l.batch, l.activation);
+    else activate_array_cpu_custom(l.output, l.outputs*l.batch, l.activation);  // leaky_relu.
     // 二值网络, 前向传播结束之后转回float
     if(l.binary || l.xnor) swap_binary(&l);
 
