@@ -98,11 +98,11 @@ void resize_region_layer(layer *l, int w, int h)
 box get_region_box(float *x, float *biases, int n, int index, int i, int j, int w, int h)
 {
     box b;
-    b.x = (i + logistic_activate(x[index + 0])) / w;
-    b.y = (j + logistic_activate(x[index + 1])) / h;
-    b.w = exp(x[index + 2]) * biases[2*n];
-    b.h = exp(x[index + 3]) * biases[2*n+1];
-    if(DOABS){
+    b.x = (i + logistic_activate(x[index + 0])) / w;  // b.x = (c_x + sigmoid(t_x))
+    b.y = (j + logistic_activate(x[index + 1])) / h;  // b.y = (c_y + sigmoid(t_y))
+    b.w = exp(x[index + 2]) * biases[2*n];            // b.w = anchor_w * exp(t_w)
+    b.h = exp(x[index + 3]) * biases[2*n+1];          // b.h = anchor_h * exp(t_h)
+    if(DOABS){   // TODO: DOABS是做什么?
         b.w = exp(x[index + 2]) * biases[2*n]   / w;
         b.h = exp(x[index + 3]) * biases[2*n+1] / h;
     }
@@ -124,7 +124,8 @@ float delta_region_box(box truth, float *x, float *biases, int n, int index, int
         tw = log(truth.w*w / biases[2*n]);
         th = log(truth.h*h / biases[2*n + 1]);
     }
-
+    // 这里记录的是坐标损失([truth_r - b_ij_r]^2, 其中truth_r表示gt与anchor之间的变换量(tx,ty,tw,th),
+    // b_ij_r也即x[index + 0]~x[index+3]表示网络预测值, 该值表示anchor与预测框之间的变换量)对应的梯度信息:
     delta[index + 0] = scale * (tx - logistic_activate(x[index + 0])) * logistic_gradient(logistic_activate(x[index + 0]));
     delta[index + 1] = scale * (ty - logistic_activate(x[index + 1])) * logistic_gradient(logistic_activate(x[index + 1]));
     delta[index + 2] = scale * (tw - x[index + 2]);
@@ -173,6 +174,9 @@ void delta_region_class(float *output, float *delta, int index, int class_id, in
         else {
             // default
             for (n = 0; n < classes; ++n) {
+                // delta[index + n]记录着类别损失对应的梯度信息.
+                // 基于softmax计算交叉熵损失,其梯度表示为: t - p;
+                // 其中target和pred均为one-hot编码形式.output[index + n]即为该pred_bbox预测为某一类物体的概率值.
                 delta[index + n] = scale * (((n == class_id) ? 1 : 0) - output[index + n]);
                 if (n == class_id) *avg_cat += output[index + n];
             }
@@ -206,33 +210,35 @@ void softmax_tree(float *input, int batch, int inputs, float temp, tree *hierarc
  * @details 本函数多次调用了entry_index()函数,且使用的参数不尽相同,尤其是最后一个参数,通过最后一个参数,
  *          可以确定出region_layer输出l.output的数据存储方式。为方便叙述,假设本层输出参数l.w = 2, l.h= 3,
  *          l.n = 2, l.classes = 2, l.coords = 4, l.c = l.n * (l.coords + l.classes + 1) = 21,
- *          l.output中存储了所有矩形框的信息参数,每个矩形框包括4条定位信息参数x,y,w,h,一条自信度(confidience)
+ *          l.output中存储了所有矩形框的信息参数,每个矩形框包括4条定位信息参数x,y,w,h,一条置信度(confidience)
  *          参数c,以及所有类别的概率C1,C2(本例中,假设就只有两个类别,l.classes=2),那么一张样本图片最终会有
  *          l.w*l.h*l.n个矩形框(l.w*l.h即为最终图像划分层网格的个数,每个网格预测l.n个矩形框),那么
  *          l.output中存储的元素个数共有l.w*l.h*l.n*(l.coords + 1 + l.classes),这些元素全部拉伸成一维数组
- *          的形式存储在l.output中,存储的顺序为：
- *          xxxxxx-yyyyyy-wwwwww-hhhhhh-cccccc-C1C1C1C1C1C1C2C2C2C2C2C2-##-xxxxxx-yyyyyy-wwwwww-hhhhhh-cccccc-C1C2C1C2C1C2C1C2C1C2C1C2
+ *          的形式存储在l.output中,存储的顺序为：(也可以通过flatten()函数看出.)
+ *          xxxxxx-yyyyyy-wwwwww-hhhhhh-cccccc-C1C1C1C1C1C1C2C2C2C2C2C2-#
+ *          #-xxxxxx-yyyyyy-wwwwww-hhhhhh-cccccc-C1C2C1C2C1C2C1C2C1C2C1C2
  *          文字说明如下：-##-隔开分成两段,左右分别是代表所有网格的第1个box和第2个box(因为l.n=2,表示每个网格
  *          预测两个box),总共有l.w*l.h个网格,且存储时,把所有网格的x,y,w,h,c信息聚到一起再拼接起来,因此xxxxxx
  *          及其他信息都有l.w*l.h=6个,因为每个有l.classes个物体类别,而且也是和xywh一样,每一类都集中存储,先存储
  *          l.w*l.h=6个C1类,而后存储6个C2类,更为具体的注释可以函数中的语句注释(注意不是C1C2C1C2C1C2C1C2C1C2
  *          C1C2的模式,而是将所有的类别拆开分别集中存储)。
- * @details 自信度参数c表示的是该预测框于gt的IOU,而C1,C2分别表示矩形框内存在物体时属于物体1和物体2的概率,
+ * @details 置信度参数c表示的是该预测框于gt的IOU,而C1,C2分别表示矩形框内存在物体时属于物体1和物体2的概率,
  *          因此c*C1即得矩形框内存在物体1的概率,c*C2即得矩形框内存在物体2的概率
  **/
 void forward_region_layer(const region_layer l, network_state state)
 {
     int i,j,b,t,n;
-    int size = l.coords + l.classes + 1;  //
+    int size = l.coords + l.classes + 1;
     memcpy(l.output, state.input, l.outputs*l.batch*sizeof(float));
     #ifndef GPU
     // 网格大小, l.n表示anchor数, size表示每个anchor中需要预测的数值个数(l.coords[4]+l.classes[20]+conf[1]);
     flatten(l.output, l.w*l.h, size*l.n, l.batch, 1);
     #endif
     for (b = 0; b < l.batch; ++b){
-        for(i = 0; i < l.h*l.w*l.n; ++i){  // 遍历每一个anchor
-            int index = size*i + b*l.outputs;  // 应该是置信度conf值索引
-            l.output[index + 4] = logistic_activate(l.output[index + 4]);
+        for(i = 0; i < l.h*l.w*l.n; ++i){      // 遍历每一个anchor
+            // 每个anchor在outputs中占据size大小的空间位置, 这里index是查找到每个anchor占据内存空间outputs的偏移量
+            int index = size*i + b*l.outputs;
+            l.output[index + 4] = logistic_activate(l.output[index + 4]);  // 获取conf(pred_bbox与gt的IOU), 并做sigmoid()
         }
     }
 
@@ -247,15 +253,16 @@ void forward_region_layer(const region_layer l, network_state state)
         }
     } else if (l.softmax){
         for (b = 0; b < l.batch; ++b){
-            for(i = 0; i < l.h*l.w*l.n; ++i){  // 遍历每一个anchor, anchor中的所有类别值过softmax函数得到对应的概率值
-                int index = size*i + b*l.outputs;
+            for(i = 0; i < l.h*l.w*l.n; ++i){      // 遍历每一个anchor, anchor中的所有类别值过softmax函数得到对应的概率值
+                int index = size*i + b*l.outputs;  // 解释同上
+                // 这里是对预测类别得分进行softmax()操作, 得到对应的概率值
                 softmax(l.output + index + 5, l.classes, 1, l.output + index + 5, 1);
             }
         }
     }
 #endif
     if(!state.train) return;
-    memset(l.delta, 0, l.outputs * l.batch * sizeof(float));  // 梯度清零
+    memset(l.delta, 0, l.outputs * l.batch * sizeof(float));  // l.delta中梯度清零
     float avg_iou = 0;
     float recall = 0;
     float avg_cat = 0;
@@ -292,37 +299,54 @@ void forward_region_layer(const region_layer l, network_state state)
             }
             if(onlyclass_id) continue;
         }
-        for (j = 0; j < l.h; ++j) {
-            for (i = 0; i < l.w; ++i) {
-                for (n = 0; n < l.n; ++n) {  // 对每一个anchor
+        // 遍历每一个网格中的每一个anchor
+        for (j = 0; j < l.h; ++j) {          // 遍历网格高
+            for (i = 0; i < l.w; ++i) {      // 遍历网格宽
+                for (n = 0; n < l.n; ++n) {  // 遍历每一个anchor
+                    // 每一个anchor都在l.outputs上占据size大小的空间, index找到对应anchor的空间偏移位置
                     int index = size*(j*l.w*l.n + i*l.n + n) + b*l.outputs;
+                    // 得到该anchor对应的预测框
                     box pred = get_region_box(l.output, l.biases, n, index, i, j, l.w, l.h);
                     float best_iou = 0;
                     int best_class_id = -1;
+                    // 每一个预测框与该图片中所有的gt计算iou
                     for(t = 0; t < l.max_boxes; ++t){
+                        // 获取gt信息
                         box truth = float_to_box(state.truth + t*l.truth_size + b*l.truths);
+                        // 得到gt对应类别id
                         int class_id = state.truth[t * l.truth_size + b*l.truths + 4];
                         if (class_id >= l.classes) continue; // if label contains class_id more than number of classes in the cfg-file
+                        // 遍历完所有的gt,及时退出for循环
                         if(!truth.x) break; // continue;
-                        float iou = box_iou(pred, truth);
+                        float iou = box_iou(pred, truth);  // 计算pred与gt的iou
                         if (iou > best_iou) {
-                            best_class_id = state.truth[t*l.truth_size + b*l.truths + 4];
+                            best_class_id = state.truth[t*l.truth_size + b*l.truths + 4];  // 标记该pred_bbox对应的类别
                             best_iou = iou;
                         }
                     }
                     avg_anyobj += l.output[index + 4];
-                    l.delta[index + 4] = l.noobject_scale * ((0 - l.output[index + 4]) * logistic_gradient(l.output[index + 4]));
-                    if(l.classfix == -1) l.delta[index + 4] = l.noobject_scale * ((best_iou - l.output[index + 4]) * logistic_gradient(l.output[index + 4]));
+                    // 这里相当于初始化l.delta[index+4]这个位置, 是负样本对应的梯度, 也即anchor对应的pred_bbox与所有的gt的IOU
+                    // 都小于预设值: 1_maxIOU<thresh × λ_noobj x (0 - b_ijk_o)^2, 其中b_ijk_o即为预测框与gt之间confidence,
+                    // 这里是对应负样本的iou损失, 因为conf采用的是sigmoid函数得到, 因此l.delta记录梯度时乘以sigmoid函数的梯度
+                    l.delta[index + 4] = l.noobject_scale * ((0 - l.output[index + 4]) *
+                                         logistic_gradient(l.output[index + 4]));
+                    if(l.classfix == -1)
+                        l.delta[index + 4] = l.noobject_scale * ((best_iou - l.output[index + 4]) *
+                                         logistic_gradient(l.output[index + 4]));
                     else{
                         if (best_iou > l.thresh) {
+                            // 如果该anchor是正样本, 则需要清零处理.
                             l.delta[index + 4] = 0;
                             if(l.classfix > 0){
-                                delta_region_class(l.output, l.delta, index + 5, best_class_id, l.classes, l.softmax_tree, l.class_scale*(l.classfix == 2 ? l.output[index + 4] : 1), &avg_cat, l.focal_loss);
+                                delta_region_class(l.output, l.delta, index + 5, best_class_id,l.classes,
+                                                   l.softmax_tree, l.class_scale*(l.classfix == 2 ? l.output[index + 4] : 1),
+                                                   &avg_cat, l.focal_loss);
                                 ++class_count;
                             }
                         }
                     }
-
+                    // 这里就是当看的图片数量小于12800时, 这里是预测框与anchor的误差,而不是与gt的误差,
+                    // 是为了在训练前期使预测框快速学习到先验框的形状.在很多新复现的论文中没有加入这个loss。
                     if(*(state.net.seen) < 12800){
                         box truth = {0};
                         truth.x = (i + .5)/l.w;
@@ -338,31 +362,39 @@ void forward_region_layer(const region_layer l, network_state state)
                 }
             }
         }
+
+        // 遍历一张图片中的所有gt
         for(t = 0; t < l.max_boxes; ++t){
+            // 获取gt信息
             box truth = float_to_box(state.truth + t*l.truth_size + b*l.truths);
+            // 获取类别信息.
             int class_id = state.truth[t * l.truth_size + b*l.truths + 4];
             if (class_id >= l.classes) {
                 printf("\n Warning: in txt-labels class_id=%d >= classes=%d in cfg-file. In txt-labels class_id should be [from 0 to %d] \n", class_id, l.classes, l.classes-1);
                 getchar();
                 continue; // if label contains class_id more than number of classes in the cfg-file
             }
-
+            // 遍历完所有的gt, 即时退出
             if(!truth.x) break; // continue;
             float best_iou = 0;
             int best_index = 0;
             int best_n = 0;
-            i = (truth.x * l.w);
-            j = (truth.y * l.h);
+            i = (truth.x * l.w);   // 计算该gt在网格中的第几列
+            j = (truth.y * l.h);   // 计算该gt在网格中的第几行
             //printf("%d %f %d %f\n", i, truth.x*l.w, j, truth.y*l.h);
             box truth_shift = truth;
-            truth_shift.x = 0;
-            truth_shift.y = 0;
+            truth_shift.x = 0;    // 将gt的x信息置0处理
+            truth_shift.y = 0;    // 将gt的y信息置0处理, 方便后续计算iou时, 不在与位置xy有关,只与wh有关
             //printf("index %d %d\n",i, j);
+            // 根据i,j追踪到gt在网格中的位置, 然后在l.outputs中取出该网格中的anchor对应的pred_bbox信息.
             for(n = 0; n < l.n; ++n){
+                // 第i,j网格中第n个anchor对应的pred_bbox在outputs内存空间中占据的偏移量.
+                // 之后l.outputs[index : index + size]属于该pred_bbox的预测信息(xywh+conf+class_nums_p).
                 int index = size*(j*l.w*l.n + i*l.n + n) + b*l.outputs;
+                // 取出anchor对应的pred_bbox坐标信息
                 box pred = get_region_box(l.output, l.biases, n, index, i, j, l.w, l.h);
-                if(l.bias_match){
-                    pred.w = l.biases[2*n];
+                if(l.bias_match){  // 如果是基于anchor进行匹配
+                    pred.w = l.biases[2*n];  // 将预测框的wh换成anchor的wh
                     pred.h = l.biases[2*n+1];
                     if(DOABS){
                         pred.w = l.biases[2*n]/l.w;
@@ -370,29 +402,36 @@ void forward_region_layer(const region_layer l, network_state state)
                     }
                 }
                 //printf("pred: (%f, %f) %f x %f\n", pred.x, pred.y, pred.w, pred.h);
-                pred.x = 0;
+                pred.x = 0;  // pred_bbox的x和y信息置0处理.
                 pred.y = 0;
-                float iou = box_iou(pred, truth_shift);
+                float iou = box_iou(pred, truth_shift);  // 计算pred与gt之间的iou
                 if (iou > best_iou){
-                    best_index = index;
+                    best_index = index;  // best_index表示与gt匹配的最大pred_bbox的索引
                     best_iou = iou;
                     best_n = n;
                 }
             }
             //printf("%d %f (%f, %f) %f x %f\n", best_n, best_iou, truth.x, truth.y, truth.w, truth.h);
-
+            // 经过上述for(n = 0; n < l.n; ++n)循环, 能找出每一个gt最佳匹配的anchor的best_index和对应best_iou信息
+            // delta_region_box得到的pred_bbox(经gt最佳匹配的anchor和预测(tx,ty,tw,th)转换而来)
             float iou = delta_region_box(truth, l.output, l.biases, best_n, best_index, i, j, l.w, l.h, l.delta, l.coord_scale);
             if(iou > .5) recall += 1;
             avg_iou += iou;
 
             //l.delta[best_index + 4] = iou - l.output[best_index + 4];
             avg_obj += l.output[best_index + 4];
+            // l.delta[best_index+4]记录着正样本的pred_bbox(anchor)的IOU损失对应的梯度信息,
+            // 损失表达式: (IOU_truth_r - bij_k_o)^2, IOU_truth_r即为GT与pred_bbox之间的iou, bij_k_o网络输出的iou
             l.delta[best_index + 4] = l.object_scale * (1 - l.output[best_index + 4]) * logistic_gradient(l.output[best_index + 4]);
+            // yolov2采用的是: (iou - l.output[best_index + 4])
+            // yolov3采用的是: (1 - l.output[best_index + 4])
             if (l.rescore) {
                 l.delta[best_index + 4] = l.object_scale * (iou - l.output[best_index + 4]) * logistic_gradient(l.output[best_index + 4]);
             }
 
             if (l.map) class_id = l.map[class_id];
+            // 从l.outputs[best_index+5]~l.outputs[best_index+5+classes]是存储这该pred_bbox的预测类别概率值.
+            // delta_region_class主要是计算类别损失对应的梯度信息
             delta_region_class(l.output, l.delta, best_index + 5, class_id, l.classes, l.softmax_tree, l.class_scale, &avg_cat, l.focal_loss);
             ++count;
             ++class_count;

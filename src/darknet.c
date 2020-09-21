@@ -457,9 +457,9 @@ int main(int argc, char **argv)
     char* parameters[] = {"./darknet",
                           "detector",
                           "train",
-                          "/home/cxj/Desktop/code/darknet/cfg/voc.data",
-                          "/home/cxj/Desktop/code/darknet/cfg/yolov2-voc.cfg",
-                          "/home/cxj/Desktop/code/darknet/pre-train-weighted/darknet19_448.conv.23"};
+                          "/home/georg/Desktop/darknet/cfg/voc.data",
+                          "/home/georg/Desktop/darknet/cfg/yolov2-voc.cfg",
+                          "/home/georg/Desktop/darknet/pre-train-weighted/darknet19_448.conv.23"};
     argv = parameters;
 //    *****************************************************************/
 

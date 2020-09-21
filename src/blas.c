@@ -16,35 +16,57 @@ void reorg_cpu(float *x, int out_w, int out_h, int out_c, int batch, int stride,
     // printf("  in_c = %d,  in_w = %d,  in_h = %d \n", in_c, out_w*stride, out_h*stride);
 
     for(b = 0; b < batch; ++b){
-        for(k = 0; k < out_c; ++k){
-            for(j = 0; j < out_h; ++j){
-                for(i = 0; i < out_w; ++i){  // 第b张图片对应的特征图中第k个通道中第j行的第i列元素
-                    // int in_index = i + j*out_w + k*out_w*out_h + b*out_w*out_h*out_c
+        for(k = 0; k < out_c; ++k){          // 遍历输出特征图通道数
+            for(j = 0; j < out_h; ++j){      // 遍历输出特征图高度
+                for(i = 0; i < out_w; ++i){  // 遍历输出特征图宽度, 第b张图片对应的特征图中第k个通道中第j行的第i列元素
+                    // in_index = i + j*out_w + k*out_w*out_h + b*out_w*out_h*out_c
                     int in_index  = i + out_w*(j + out_h*(k + out_c*b));
+                    // TODO: 疑问, 当k=1,i=0,j=0时, c2=1,w2=0,h2=0, 输出特征图第2特征层对应输入特征图第2个特征层,与图示不符合.
                     int c2 = k % in_c;
-                    int offset = k / in_c;
-                    int w2 = i*stride + offset % stride;
-                    int h2 = j*stride + offset / stride;
+                    int offset = k / in_c;                 // 通道偏移
+                    int w2 = i*stride + offset % stride;   // 输入特征图宽度位置
+                    int h2 = j*stride + offset / stride;   // 输入特征图高度位置
+                    // out_index = out_w*out_h*s*s*in_c*b + out_w*out_h*s*s*c2 + out_w*s*h2 + w2
                     int out_index = w2 + out_w*stride*(h2 + out_h*stride*(c2 + in_c*b));
-                    if(forward) out[out_index] = x[in_index];    // used by default for forward (i.e. forward = 0)
-                    else out[in_index] = x[out_index];
+                    if(forward)
+                        out[out_index] = x[in_index];
+                    else
+                        out[in_index] = x[out_index];  // used by default for forward (i.e. forward = 0)
                 }
             }
         }
     }
 }
 
+
+/**
+ * @param      x: region层输出结果
+ * @param   size: w*h
+ * @param   layers: anchor_nums * (coord(4) + num_classes(20)+1)  -->vocdata
+ * @param   batch:
+ * @param   forward: anchor_nums * (coord(4) + num_classes(20)+1)  -->vocdata
+ **/
 void flatten(float *x, int size, int layers, int batch, int forward)
 {   // size: 网格大小, 比如19*19, layers:每个网格中的anchor数x每个anchor需要的预测的数值(coords+class+conf).
     float* swap = (float*)xcalloc(size * layers * batch, sizeof(float));
     int i,c,b;
     for(b = 0; b < batch; ++b){
-        for(c = 0; c < layers; ++c){    // anchor_nums x (coords+class+conf);
+        for(c = 0; c < layers; ++c){    // anchor_nums x (coords+num_class+conf);
             for(i = 0; i < size; ++i){  // 网格大小: 19 x 19;
-                int i1 = b*layers*size + c*size + i;  // 第b张图像所对应的特征图第c个anchor在第i个网格中
-                int i2 = b*layers*size + i*layers + c;  // 第b张图像所对应的特征图第i个网格在第c个anchor中
-                if (forward) swap[i2] = x[i1];
-                else swap[i1] = x[i2];
+                // 这里需要理解一下: i1 = b*layers*size + c*size + i
+                // b*layers*size表示b-1张图所有的特征, c*size表示已经跨过了c-1张特征图.
+                // i表示正在处理的第i个网格.
+                // 这里需要理解一下: i2 = b*layers*size + i*layers + c
+                // i * layers, 每个网格都占据layers层, 迭代至ixlayers表示已经遍历i个网格的所有层,
+                // c表示当前正在处理第c层的特征
+                // 综上分析可以, 经过flatten()函数操作之后, l.outputs中的内变为如下形式:
+                // TODO: 明天在做具体分析
+                int i1 = b*layers*size + c*size + i;    // 第b张图片第c层特征图中的第i个网格
+                int i2 = b*layers*size + i*layers + c;  // 第b张图片第i个网格中的第c层特征,
+                if (forward)
+                    swap[i2] = x[i1];
+                else
+                    swap[i1] = x[i2];
             }
         }
     }
