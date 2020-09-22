@@ -1687,26 +1687,25 @@ void backward_convolutional_layer(convolutional_layer l, network_state state)
     else if (l.activation == NORM_CHAN)
         gradient_array_normalize_channels(l.output, l.outputs*l.batch, l.batch, l.out_c,
                                           l.out_w*l.out_h, l.delta);
-        // 计算当前层激活函数对加权输入(也即: net_l)的导数值并乘以l.delta相应元素,从而彻底完成当前层敏感度图的计算,得到当前层的
-        // 敏感度图l.delta, l.output存储了该层网络的所有输出(a_l):该层网络接受一个batch的输入图片,其中每张图片经卷积
-        // 处理后得到的特征图尺寸为:l.out_w,l.out_h,该层卷积网络共有l.n个卷积核,因此一张输入图片共输出l.n张宽高
-        // 为l.out_w,l.out_h的特征图(l.outputs为一张图所有输出特征图的总元素个数),所以所有输入图片也即l.output
-        // 中的总元素个数为:l.n*l.out_w*l.out_h*l.batch; l.activation为该卷积层的激活函数类型,l.delta就是
-        // gradient_array()函数计算得到的l.output中每一个元素关于激活函数函数输入的导数值,注意,这里直接利用输出值
-        // 求得激活函数关于输入的导数值是因为神经网络中所使用的绝大部分激活函数关于输入的导数值都可以描述为输出值的函数
-        // 表达式,比如对于Sigmoid激活函数(记作f(x)),其导数值为f(x)'=f(x)*(1-f(x)),因此如果给出y=f(x),那么
-        // f(x)'=y*(1-y),只需要输出值y就可以了,不需要输入x的值,(暂时不确定darknet中有没有使用特殊的激活函数,以致于
-        // 必须要输入值才能够求出导数值,在activiation.c文件中,有几个激活函数暂时没看懂,也没在网上查到). l.delta是一
-        // 个一维数组,长度为l.batch * l.outputs(其中l.outputs = l.out_h * l.out_w * l.out_c),
-        // 在make_convolutional_layer()动态分配内存; 再强调一次:gradient_array()不单单是完成激活函数对输入的求导
-        // 运算,还完成计算当前层敏感度图的最后一步:l.delta中每个元素乘以激活函数对输入的导数(注意gradient_arry中使用
-        // 的是*=运算符). 每次调用backward_convolutional_laye时,都会完成当前层敏感度图的计算,同时会计算上一层的
-        // 敏感度图,但对于上一层,其敏感度图并没有完全计算完成,还差一步,需要等到下一次调用backward_convolutional_layer()
-        // 时来完成,诚如col2im_cpu()中注释一样. 
+
+        // 根据链接: https://www.zybuluo.com/hanbingtao/note/485480
+        // ①: net_l = conv(W_l, a_l-1)+w_b;
+        // ②: a_l-1 = f_l-1(net_l-1);
+        // ③: δ_l = ∂E/∂net_l = (∂E/∂a_l)x(∂a_l/∂net_l)
+        // 根据后面gradient_array()这个函数: delta[i] *= gradient(l.outputs[i], relu),
+        // 其中l.output存储了该层网络的所有输出(a_l), 因为, a_l = f_l * (net_l), 其中: f_l为激活函数.
+        // gradient(l.outputs[i], relu)也就是: (∂a_l/∂net_l)
+        // 在没有经过gradient_array()函数操作之前, l.delta里面存储的只是(∂E/∂a_l), 因此,gradient_array()函数
+        // 计算(∂a_l/∂net_l)并乘以l.delta相应元素(∂E/∂a_l),从而彻底完成当前层敏感度图δ_l的计算,得到当前层的
+        // 敏感度图l.delta, 再强调一次:gradient_array()不单单是完成激活函数对输入的求导运算,还完成计算当前层敏感
+        // 度图的最后一步:l.delta中每个元素乘以激活函数对输入的导数(注意gradient_arry中使用的是*=运算符).
+        // 每次调用backward_convolutional_laye时,都会完成当前层敏感度图的计算,同时会计算上一层的敏感度图,
+        // 但对于上一层,其敏感度图并没有完全计算完成,还差一步,需要等到下一次调用backward_convolutional_layer()
+        // 时来完成,同样是调用gradient_array()来完成.
     else gradient_array(l.output, l.outputs*l.batch, l.activation, l.delta);  // 该层网络的输出值对激活函数的导数
     // 以上过程彻底完成了第l层的敏感度(或者误差项)l.delta, 也即δ_l的计算.
     if (l.batch_normalize) {
-        // 之后单独讲BN层的前向和反向传播
+        // BN层的前向和反向传播
         backward_batchnorm_layer(l, state);
     }
     else {
@@ -1722,19 +1721,21 @@ void backward_convolutional_layer(convolutional_layer l, network_state state)
     // 因此l.weights与l.weight_updates维度为l.n*l.size*l.size,l.bias与l.bias_updates的维度为l.n,都与l.batch无关
     for (i = 0; i < l.batch; ++i) {
         for (j = 0; j < l.groups; ++j) {
-            float *a = l.delta + (i*l.groups + j)*m*k;  // m = out_c, k = out_h * out_w; l.delta即为该层的敏感度, 敏感度与batch有关
+            // m = out_c, k = out_h * out_w; l.delta即为该层的敏感度, 敏感度与batch有关
+            float *a = l.delta + (i*l.groups + j)*m*k;
             // net.workspace的元素个数为所有层中最大的l.workspace_size(在make_convolutional_layer()计算
             // 得到workspace_size的大小,在parse_network_cfg()中动态分配内存,此值对应未使用gpu时的情况),
             // net.workspace充当一个临时工作空间的作用,存储临时所需要的计算参数,比如每层单张图片重排后的结果
             // (这些参数马上就会参与卷积运算),一旦用完,就会被马上更新(因此该变量的值的更新频率比较大).
             float *b = state.workspace;
-            float *c = l.weight_updates + j*l.nweights / l.groups;   // 卷积核权重w_ij与batch无关
-            // 进入本函数之前,在backward_network()函数中,已经将net.input赋值为prev.output,也即若当前层为第l层,
-            // net.input此时已经是第l-1层的输出, 注意反向传播从后往前来看
-            float *im = state.input + (i*l.groups + j)* (l.c / l.groups)*l.h*l.w;  // 图像数据
-            // 下面两步：im2col_cpu()与gemm()是为了计算当前层的权重更新值(其实也就是误差函数对当前成权重的导数: ∂E/∂w_ij)
-            // 将多通道二维图像net.input变成按一定存储规则排列的数组b,以方便、高效地进行矩阵(卷积)计算,详细查看
-            // 该函数注释(比较复杂),im2col_cput每次仅处理net.input(包含整个batch)中的一张输入图片(对于第一层,
+            // l.weight_updates用于存放: ∂Loss / ∂w_ij;
+            float *c = l.weight_updates + j*l.nweights / l.groups;
+            // 进入本函数之前,在backward_network()函数中,已经将state.input赋值为prev.output,
+            // 也即若当前层为第l层, state.input此时已经是第l-1层的输出(a_l-1), 注意反向传播从后往前来看
+            float *im = state.input + (i*l.groups + j)* (l.c / l.groups)*l.h*l.w;
+            // 下面两步：im2col_cpu()与gemm()是为了计算当前层的权重更新值(误差函数对当前成权重的导数: ∂E/∂w_ij)
+            // 将多通道三维数据state.input变成按一定存储规则排列的数组b,以方便、高效地进行矩阵(卷积)计算,详细查看
+            // 该函数注释(比较复杂),im2col_cput每次仅处理state.input(包含整个batch)中的一张输入图片(对于第一层,
             // 则就是读入的图片,对于之后的层,这些图片都是上一层的输出,通道数等于上一层卷积核个数)。最终重排的b为
             // l.c * l.size * l.size行, l.out_h * l.out_w列。你会发现在前向forward_convolutional_layer()
             // 函数中,也为每层的输入进行了重排,但是很遗憾的是,并没有一个l.workspace把每一层的重排结果保存下来,而是
@@ -1754,38 +1755,35 @@ void backward_convolutional_layer(convolutional_layer l, network_state state)
                 l.stride_y, l.stride_x, // stride (h, w)
                 l.dilation, l.dilation, // dilation (h, w)
                 b);                 // output
-            // 下面计算当前层的权重更新值, 所谓权重更新值就是weight = weight - alpha * weight_update中的weight_update,
-            // 由博客: https://www.zybuluo.com/hanbingtao/note/485480可知, weight_update即为∂E/∂w_ij=a_i*δ_j.
-            // 但是值得注意的是, 从后续backward_softmax_layer()和back_maxpool_layer()可以看出, 这个weight_update实际上
-            // 为动量项+∂E/∂w_ij.权重更新值等于当前层(第l层)敏感度图(δ)与上一层(第l-1层)的网络输出(a), 因为一个权重跟当前层多
-            // 个输出有关联(权值共享, 即卷积核在图像中跨步移动做卷积, 每个位置卷积得到的值都与该权值相关), 所以对每一个权重更新值
-            // 来说, 需要在l.delta中找出所有与之相关的敏感度, 乘以相应像素值, 再求和,也即: ∂E/∂w_ij = ∑δ*a_l-1.具体实现的方式
-            // 依靠im2col_cpu()与gemm_nt()完成.(backward_convolutional_layer整个函数的代码非常重要, 仅靠文字没有公式与图表
-            // 辅助说明可能很难说清, 所以这部分更为清晰详细的说明, 请参考个人博客!)
-            // GEneral Matrix to Matrix Multiplication
+            // 由博客: https://www.zybuluo.com/hanbingtao/note/485480可知, weight_update即为∂E/∂w= ∑ ∑δ_l*a_l-1.
+            // 权重更新值等于当前层(第l层)敏感度图(δ)与上一层(第l-1层)的网络输出(a), 因为一个权重跟当前层多个输出有关联
+            // (权值共享, 即卷积核在图像中跨步移动做卷积, 每个位置卷积得到的值都与该权值相关), 所以对每一个权重更新值
+            // 来说, 需要在l.delta中找出所有与之相关的敏感度, 乘以相应像素值, 再求和,也即: ∂E/∂w_ij = ∑ ∑δ_l*a_l-1.
+            // 具体实现的方式依靠im2col_cpu()与gemm_nt()完成.(backward_convolutional_layer整个函数的代码非常重要.
             // 此处在im2col_cpu操作基础上, 利用矩阵乘法c=alpha*a*b+beta*c完成对图像卷积的操作;
             // 0表示不对输入a进行转置, 1表示对输入b进行转置;
             // m是输入a,c的行数, 具体含义为卷积核的个数(l.n);
             // n是输入b,c的列数, 具体含义为每个卷积核元素个数乘以输入图像的通道数(l.size*l.size*l.c);
             // k是输入a的列数也是b的行数, 具体含义为每个输出特征图的元素个数(l.out_w*l.out_h);
             // a,b,c即为三个参与运算的矩阵(用一维数组存储),alpha=beta=1为常系数;
-            // a为l.delta的一大行.l.delta为本层所有输出元素(包含整个batch中每张图片的所有输出特征图)关于加权输入的导数
-            // (即激活函数的导数值)集合,元素个数为l.batch * l.out_h * l.out_w * l.out_c(l.out_c = l.n), 按行存储, 
-            // 共有l.batch行, l.out_c * l.out_h * l.out_w列,即l.delta中每行包含一张图的所有输出图, 故这么一大行, 
-            // 又可以视作有l.out_c(l.out_c=l.n)小行, l.out_h*l*out_w小列, 而一次循环就是处理l.delta的一大行,故可以将a视作
-            // l.out_c行, l.out_h*l*out_w列的矩阵;
-            // b为单张输入图像经过im2col_cpu重排后的图像数据;
-            // c为输出, 按行存储, 可视作有l.n行, l.c*l.size*l.size列(l.c是输入图像的通道数, l.n是卷积核个数), 
-            // 即c就是所谓的误差项(输出关于加权输入的导数:δ_l-1 = ∂E/∂net_l-1), 或者敏感度, 这里可以参看博客:
-            // https://www.zybuluo.com/hanbingtao/note/485480)(一个核有l.c*l.size*l.size个权重, 共有l.n个核).
+            // a: 也即δ_l, 为l.delta的一大行, l.delta为损失函数关于本层所有输出元素(a_l)的δ,元素个数为:
+            // l.batch*l.out_h*l.out_w*l.out_c(l.out_c = l.n), 按行存储,共有l.batch行,
+            // l.out_c * l.out_h * l.out_w列,即l.delta中每行包含一张图的所有输出图, 故这么一大行,
+            // 又可以视作有l.out_c(l.out_c=l.n)小行, l.out_h*l*out_w小列, 而一次循环就是处理l.delta的一大行,
+            // 故可以将a视作l.out_c行, l.out_h*l*out_w列的矩阵;
+            // b: 也即a_l-1为单张输入图像经过im2col_cpu重排后的图像数据;
+            // c: 也即, ∂E/∂w_ij为输出, 按行存储, 可视作有l.n行, l.c*l.size*l.size列(l.c是输入图像的通道数,
+            // l.n是卷积核个数),这里可以参看博客: https://www.zybuluo.com/hanbingtao/note/485480),
+            // (一个核有l.c*l.size*l.size个权重, 共有l.n个核).
             // 由上可知：
             // a: (l.out_c) * (l.out_h*l*out_w)
             // b: (l.c * l.size * l.size) * (l.out_h * l.out_w)
             // c: (l.n) * (l.c*l.size*l.size)(注意：l.n = l.out_c)
             // 故要进行a * b + c计算, 必须对b进行转置(否则行列不匹配), 因故调用gemm_nt()函数   
             gemm(0, 1, m, n, k, 1, a, k, b, k, 1, c, n);
-            // 接下来, 用当前层(第l层)的敏感度图l.delta以及权重l.weights(还未更新)来获取上一层(第l-1层)网络的敏感度图l.delta_l-1,
-            // 也即: l.delta_l-1 = ∑l.delta_l * W_l * f'(net_l-1) <=> δ_l-1 = ∑(δ_l * W_l * f'(net_l-1))
+            // 接下来的if部分, 用当前层(第l层)的敏感度图l.delta(δ_l)以及权重l.weights(w_l,但是还未更新)来
+            // 计算上一层(第l-1层)网络的敏感度图l.delta_l-1,也即δ_l-1:
+            // l.delta_l-1 = ∑l.delta_l*W_l*f'(net_l-1) <=> δ_l-1 = ∑(δ_l*W_l*f'(net_l-1)).
             // BP算法的主要流程就是依靠这种层与层之间敏感度反向递推传播关系来实现.在network.c的backward_network()中, 
             // 会从最后一层网络往前遍循环历至第一层, 而每次开始遍历某一层网络之前, 都会更新net.input为这一层网络前一层
             // 的输出, 即prev.output,同时更新net.delta为prev.delta, 因此, 这里的net.delta是当前层前一层的敏感度图.
@@ -1800,7 +1798,7 @@ void backward_convolutional_layer(convolutional_layer l, network_state state)
                 // net.workspace和上面一样,还是一张输入图片的重排,不同的是,此处我们只需要这个容器,而里面存储的
                 // 值我们并不需要,在后面的处理过程中,
                 // 会将其中存储的值一一覆盖掉(尺寸维持不变,还是(l.c*l.size*l.size)*(l.out_h*l.out_w).
-                c = state.workspace;
+                c = state.workspace;  // δ_l-1
                 // 相比上一个gemm,此处的a对应上一个的c,b对应上一个的a,c对应上一个的b,即此处a,b,c的行列分别为：
                 // a: (l.n) * (l.c*l.size*l.size),表示当前层所有权重系数
                 // b: (l.out_c) * (l.out_h*l*out_w)(注意：l.n = l.out_c),表示当前层的敏感度图
@@ -1808,33 +1806,33 @@ void backward_convolutional_layer(convolutional_layer l, network_state state)
                 // 网络单张输入图片的所有输出元素个数),此时要完成a * b + c计算,必须对a进行转置(否则行列不匹配),
                 // 因故调用gemm_tn()函数。此操作含义是用：用当前层还未更新的权重值对敏感度图做卷积,得到包含上一层所有
                 // 敏感度信息的矩阵,但这不是上一层最终的敏感度图,因为此时的c,
-                // 也即net.workspace的尺寸为(l.c * l.size * l.size) * (l.out_h * l.out_w),明显不是上一层
+                // 也即state.workspace的尺寸为(l.c * l.size * l.size) * (l.out_h * l.out_w),明显不是上一层
                 // 的输出尺寸l.c*l.w*l.h,接下来还需要调用col2im_cpu()函数将其恢复至l.c*l.w*l.h(可视为l.c行,
                 // l.w*l.h列),这才是上一层的敏感度图(实际还差一个环节,这个环节需要等到下一次调用
-                // backward_convolutional_layer()才完成：将net.delta中每个元素乘以激活函数对加权输入的导数值)。
+                // backward_convolutional_layer()才完成：将state.delta中每个元素乘以激活函数对加权输入的导数值)。
                 // 完成gemm这一步,如col2im_cpu()中注释,是考虑了多个卷积核导致的一对多关系(上一层的一个输出元素
                 // 会流入到下一层多个输出元素中),接下来调用col2im_cpu()则是考虑卷积核重叠(步长较小)导致的一对多关系。
                 gemm(1, 0, n, k, m, 1, a, n, b, k, 0, c, k);
-
-                // 对c也即net.workspace进行重排,得到的结果存储在net.delta中,每次循环只会处理一张输入图片,因此,
-                // 此处只会得到一张输入图产生的敏感图(注意net.delta的移位),整个循环结束后,net.delta的总尺寸为
+                // 对c也即state.workspace进行重排,得到的结果存储在state.delta中,每次循环只会处理一张输入图片,因此,
+                // 此处只会得到一张输入图产生的敏感图(注意state.delta的移位),整个循环结束后,state.delta的总尺寸为
                 // l.batch * l.h * l.w * l.c,这就是上一层网络整个batch的敏感度图,可视为有l.batch行,l.h*l.w*l.c列,
                 // 每行存储了一张输入图片所有输出特征图的敏感度.
-                // col2im_cpu()函数中会调用col2im_add_pixel()函数,该函数中使用了+=运算符,也即该函数要求输入的net.delta的
+                // col2im_cpu()函数中会调用col2im_add_pixel()函数,该函数中使用了+=运算符,也即该函数要求输入的state.delta的
                 // 初始值为0,而在gradient_array()中注释到l.delta的元素是不为0(也不能为0)的,看上去是矛盾的,实则不然,
                 // gradient_array()使用的l.delta是当前层的敏感度图,而在col2im_cpu()使用的net.delta是上一层的敏感度图,
                 // 正如gradient_array()中所注释的,当前层l.delta之所以不为0,是因为从后面层反向传播过来的,对于上一层,
-                // 显然还没有反向传播到那,因此net.delta的初始值都是为0的(注意,每一层在构建时,就为其delta动态分配了内存,
+                // 显然还没有反向传播到那,因此state.delta的初始值都是为0的(注意,每一层在构建时,就为其delta动态分配了内存,
                 // 且在前向传播时,为每一层的delta都赋值为0,可以参考network.c中forward_network()函数)
                 col2im_cpu_ext(
-                    state.workspace,        // input
+                    state.workspace,                // input
                     l.c / l.groups,         // input channels (h, w)
-                    l.h, l.w,               // input size (h, w)
-                    l.size, l.size,         // kernel size (h, w)
-                    l.pad * l.dilation, l.pad * l.dilation,           // padding (h, w)
-                    l.stride_y, l.stride_x,     // stride (h, w)
-                    l.dilation, l.dilation, // dilation (h, w)
-                    state.delta + (i*l.groups + j)* (l.c / l.groups)*l.h*l.w); // output (delta)
+                    l.h, l.w,                       // input size (h, w)
+                    l.size, l.size,                 // kernel size (h, w)
+                    l.pad * l.dilation,       // padding h
+                    l.pad * l.dilation,       // padding w
+                    l.stride_y, l.stride_x,         // stride (h, w)
+                    l.dilation, l.dilation,         // dilation (h, w)
+                    state.delta + (i*l.groups + j)* (l.c / l.groups)*l.h*l.w);  // output (delta)
             }
         }
     }

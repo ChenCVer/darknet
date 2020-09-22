@@ -250,6 +250,7 @@ void forward_region_layer(const region_layer l, network_state state)
     }
 #endif
     if(!state.train) return;
+    // 核心: 每次forward()之后都会对region层的梯度进行清零处理.
     memset(l.delta, 0, l.outputs * l.batch * sizeof(float));  // l.delta中梯度清零
     float avg_iou = 0;     // 所有gt与最佳anchor的之间都有iou, 然后avg += iou, 然后除以count
     float recall = 0;      // 所有gt与对应的l.n个预测框中某一个的iou>0.5,则recall+1, 然后除以count
@@ -258,7 +259,7 @@ void forward_region_layer(const region_layer l, network_state state)
     float avg_anyobj = 0;  // 所有pred_bbox输出的conf的累加值, 然后除以count, 无实质用处
     int count = 0;         // 一张图片中有效的gt总数
     int class_count = 0;
-    *(l.cost) = 0;         // 损失值清零
+    *(l.cost) = 0;         // 损失值也必须清零处理.
     for (b = 0; b < l.batch; ++b) {
 
         if(l.softmax_tree){
@@ -445,6 +446,8 @@ void forward_region_layer(const region_layer l, network_state state)
 
 void backward_region_layer(const region_layer l, network_state state)
 {
+    // l.delta是region层的梯度, state.delta是region层的上一层的梯度信息,
+    // state.delta[i*1] += 1 * l.delta[i*1], 相当于直接将l.delta层的梯度复制给上一层.
     axpy_cpu(l.batch*l.inputs, 1, l.delta, 1, state.delta, 1);
 }
 

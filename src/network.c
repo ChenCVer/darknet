@@ -360,7 +360,7 @@ void backward_network(network net, network_state state)
     state.workspace = net.workspace;
     for(i = net.n-1; i >= 0; --i){
         state.index = i;  // 标志参数, 当前网络的活跃层 
-        // i = 0时,也即已经到了网络的第1层(或者说第0层,看个人习惯了～)了,就是直接与输入层相连的第一层隐含层
+        // i = 0时,也即已经到了网络的第1层(或者说第0层),就是直接与输入层相连的第一层隐含层
         // (注意不是输入层,我理解的输入层就是指输入的图像数据,严格来说,输入层不算一层网络,因为输入层没有训练
         // 参数,也没有激活函数),这个时候,不需要else中的赋值,1)对于第1层来说,其前面已经没有网络层了(输入层不算),
         // 因此没有必要再计算前一层的参数,故没有必要在获取上一层; 2)第一层的输入就是图像输入,也即整个net最原始的
@@ -374,11 +374,11 @@ void backward_network(network net, network_state state)
             state.delta = original_delta;
         }
         else{
-            // 获取上一层
+            // 获取net.layers[i]的上一层net.layer[i-1].
             layer prev = net.layers[i-1];
-            // 上一层的输出值a_l-1作为当前层的输入(下面l.backward()会用到，具体是在计算当前层权重更新值时要用到)
+            // prev.output也即a_l-1, 上一层的输出值a_l-1作为当前层的输入, 下面l.backward()会用到
             state.input = prev.output;
-            // 上一层的敏感度图δ_l-1(l.backward()会同时计算上一层的敏感度图, 敏感度也即是误差项δ)
+            // 上一层的敏感度图δ_l-1, 敏感度也即误差项.
             state.delta = prev.delta;
         }
         // 置网络当前活跃层为当前层, 即第i层
@@ -410,7 +410,8 @@ float train_network_datum(network net, float *x, float *y)
     float error = get_network_cost(net);
     //if(((*net.seen)/net.batch)%net.subdivisions == 0) update_network(net);
     if(*(state.net.total_bbox) > 0)
-        fprintf(stderr, " total_bbox = %d, rewritten_bbox = %f %% \n", *(state.net.total_bbox), 100 * (float)*(state.net.rewritten_bbox) / *(state.net.total_bbox));
+        fprintf(stderr, " total_bbox = %d, rewritten_bbox = %f %% \n",
+                *(state.net.total_bbox), 100 * (float)*(state.net.rewritten_bbox) / *(state.net.total_bbox));
     return error;
 }
 
