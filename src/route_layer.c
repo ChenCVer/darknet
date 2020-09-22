@@ -106,11 +106,12 @@ void backward_route_layer(const route_layer l, network_state state)
     int offset = 0;
     for(i = 0; i < l.n; ++i){
         int index = l.input_layers[i];
-        float *delta = state.net.layers[index].delta;  // 第27, 28层的误差项地址
+        // 第27, 28层的误差项地址, 这个误差项是只有δ_l*W部分的, 还没乘以f'(net)这块
+        float *delta = state.net.layers[index].delta;
         int input_size = l.input_sizes[i];
         int part_input_size = input_size / l.groups;
         for(j = 0; j < l.batch; ++j){
-            // Y = Y + ALPHA * X;
+            // delta = delta+ALPHA*(l.delta+offset+j*l.outputs);
             axpy_cpu(part_input_size, 1, l.delta + offset + j*l.outputs, 1,
                      delta + j*input_size + part_input_size*l.group_id, 1);
         }

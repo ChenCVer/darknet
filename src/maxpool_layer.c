@@ -342,7 +342,7 @@ void forward_maxpool_layer(const maxpool_layer l, network_state state)
                                 int cur_h = h_offset + i*l.stride_y + n;
                                 int cur_w = w_offset + j*l.stride_x + m;
                                 // index = b * l.c * l.h * l.w + k * l.h * l.w + cur_h * l_w + cur_w
-                                int index = cur_w + l.w*(cur_h + l.h*(k + b*l.c));
+                                int index = cur_w + l.w*(cur_h + l.h*(k + b*l.c));  // index为输入特征图的索引
                                 int valid = (cur_h >= 0 && cur_h < l.h &&
                                     cur_w >= 0 && cur_w < l.w);
                                 // d.X.cols = h * w * c
@@ -396,12 +396,11 @@ void backward_maxpool_layer(const maxpool_layer l, network_state state)
     // 获取当前最大池化层l的输出尺寸h,w
     int h = l.out_h;
     int w = l.out_w;
-    // 获取当前层输入的通道数,为什么是输入通道数?不应该为输出通道数吗?实际二者没有区别,
-    // 对于最大池化层来说,输入有多少通道,输出就有多少通道!
+    // 获取当前层输出的通道数
     int c = l.out_c;
     // 计算上一层的敏感度图(未计算完全,还差一个环节,这个环节等真正反向到了那层再执行)
     // 这个循环很有意思,循环总次数为当前层输出总元素个数(包含所有输入图片的输出,即维度
-    // 为l.out_h * l.out_w * l.c * l.batch,注意此处l.c==l.out_c),而不是上一层
+    // 为l.out_h*l.out_w*l.out_c*l.batch,注意此处l.c==l.out_c),而不是上一层
     // 输出总元素个数,为什么呢?是因为对于最大池化层而言,其每个输出元素对仅受上一层输出
     // 对应池化核区域中最大值元素的影响,所以当前池化层每个输出元素对于上一层输出中的很多
     // 元素的导数值为0,而对最大值元素,其导数值为1；再乘以当前层的敏感度图,导数值为0的还
@@ -424,8 +423,8 @@ void backward_maxpool_layer(const maxpool_layer l, network_state state)
         // 从forward_maxpool_layer()函数可以得知,遍历是以输出为基准进行遍历操作, 且out_index
         // 直接对应于输出特征图的索引, 因此, 在backword_maxpool_layer()函数中, 就可以直接从
         // 对应的out_index中取出对应的max_i.
-        int index = l.indexes[i];
-        state.delta[index] += l.delta[i];  // 使用+= 应该主要考虑当stride < kerler_w时有重叠的情况? 这句话分析有问题.
+        int index = l.indexes[i];  // l.indexes里面记录着maxpool层的输出特征图中每一个位置与之关联在输入特征层中的位置索引.
+        state.delta[index] += l.delta[i];  //TODO: 这里使用+= 应该主要考虑当stride<kernel_w时有重叠的情况? 后期仔细分析.
     }
 }
 

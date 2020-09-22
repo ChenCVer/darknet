@@ -88,6 +88,8 @@ void forward_reorg_old_layer(const layer l, network_state state)
 
 void backward_reorg_old_layer(const layer l, network_state state)
 {
+    // 从reorg_cpu()函数可以看出, reorg层的反向传播, 就是将state.delta按照, forward()传播
+    // 时, 怎么进行拆分合并的, 然后backword()就按照相反的操作, 传递给l.delta,从而实现反向传传播.
     if (l.reverse) {
         reorg_cpu(l.delta, l.w, l.h, l.c, l.batch, l.stride, 0, state.delta);
     }
