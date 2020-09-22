@@ -40,11 +40,11 @@ void reorg_cpu(float *x, int out_w, int out_h, int out_c, int batch, int stride,
 
 
 /**
- * @param      x: region层输出结果
+ * @param   x: region层输出结果
  * @param   size: w*h
  * @param   layers: anchor_nums * (coord(4) + num_classes(20)+1)  -->vocdata
  * @param   batch:
- * @param   forward: anchor_nums * (coord(4) + num_classes(20)+1)  -->vocdata
+ * @param   forward:
  **/
 void flatten(float *x, int size, int layers, int batch, int forward)
 {   // size: 网格大小, 比如19*19, layers:每个网格中的anchor数x每个anchor需要的预测的数值(coords+class+conf).
@@ -57,10 +57,14 @@ void flatten(float *x, int size, int layers, int batch, int forward)
                 // b*layers*size表示b-1张图所有的特征, c*size表示已经跨过了c-1张特征图.
                 // i表示正在处理的第i个网格.
                 // 这里需要理解一下: i2 = b*layers*size + i*layers + c
-                // i * layers, 每个网格都占据layers层, 迭代至ixlayers表示已经遍历i个网格的所有层,
+                // i*layers, 每个网格都占据layers层, 迭代至ixlayers表示已经遍历i个网格的所有层,
                 // c表示当前正在处理第c层的特征
                 // 综上分析可以, 经过flatten()函数操作之后, l.outputs中的内变为如下形式:
-                // TODO: 明天在做具体分析
+                // size = w*h = 2x2, num_anchors=3, num_class=2;
+                // [||-xywhcC1C2-xywhcC1C2-xywhcC1C2-||
+                //  ||-xywhcC1C2-xywhcC1C2-xywhcC1C2-||
+                //  ||-xywhcC1C2-xywhcC1C2-xywhcC1C2-||
+                //  ||-xywhcC1C2-xywhcC1C2-xywhcC1C2-||]
                 int i1 = b*layers*size + c*size + i;    // 第b张图片第c层特征图中的第i个网格
                 int i2 = b*layers*size + i*layers + c;  // 第b张图片第i个网格中的第c层特征,
                 if (forward)

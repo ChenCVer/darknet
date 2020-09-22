@@ -203,28 +203,14 @@ static int entry_index(layer l, int batch, int location, int entry)
 
 void softmax_tree(float *input, int batch, int inputs, float temp, tree *hierarchy, float *output);
 
-
-/**
- * @param l
- * @param net
- * @details 本函数多次调用了entry_index()函数,且使用的参数不尽相同,尤其是最后一个参数,通过最后一个参数,
- *          可以确定出region_layer输出l.output的数据存储方式。为方便叙述,假设本层输出参数l.w = 2, l.h= 3,
- *          l.n = 2, l.classes = 2, l.coords = 4, l.c = l.n * (l.coords + l.classes + 1) = 21,
- *          l.output中存储了所有矩形框的信息参数,每个矩形框包括4条定位信息参数x,y,w,h,一条置信度(confidience)
- *          参数c,以及所有类别的概率C1,C2(本例中,假设就只有两个类别,l.classes=2),那么一张样本图片最终会有
- *          l.w*l.h*l.n个矩形框(l.w*l.h即为最终图像划分层网格的个数,每个网格预测l.n个矩形框),那么
- *          l.output中存储的元素个数共有l.w*l.h*l.n*(l.coords + 1 + l.classes),这些元素全部拉伸成一维数组
- *          的形式存储在l.output中,存储的顺序为：(也可以通过flatten()函数看出.)
- *          xxxxxx-yyyyyy-wwwwww-hhhhhh-cccccc-C1C1C1C1C1C1C2C2C2C2C2C2-#
- *          #-xxxxxx-yyyyyy-wwwwww-hhhhhh-cccccc-C1C2C1C2C1C2C1C2C1C2C1C2
- *          文字说明如下：-##-隔开分成两段,左右分别是代表所有网格的第1个box和第2个box(因为l.n=2,表示每个网格
- *          预测两个box),总共有l.w*l.h个网格,且存储时,把所有网格的x,y,w,h,c信息聚到一起再拼接起来,因此xxxxxx
- *          及其他信息都有l.w*l.h=6个,因为每个有l.classes个物体类别,而且也是和xywh一样,每一类都集中存储,先存储
- *          l.w*l.h=6个C1类,而后存储6个C2类,更为具体的注释可以函数中的语句注释(注意不是C1C2C1C2C1C2C1C2C1C2
- *          C1C2的模式,而是将所有的类别拆开分别集中存储)。
- * @details 置信度参数c表示的是该预测框于gt的IOU,而C1,C2分别表示矩形框内存在物体时属于物体1和物体2的概率,
- *          因此c*C1即得矩形框内存在物体1的概率,c*C2即得矩形框内存在物体2的概率
- **/
+/** 本函数是yolo系列的损失函数, 其中需要理解的主要是flatten()函数是怎样改变l.outputs的内存分布,
+ *  从forward_region_layer()多处for循环可以看出, 比如:
+ *  for(i=0; i<l.h*l.w*l.n; i++)
+ *      int index = size * i + b*l.outputs;
+ *  总共有l.h*l.w*l.n预测框, 每个预测框占据size=l.coords + l.classes + 1空间大小.并且结合
+ *  flatten()函数可以推出,l.outputs的内存分布形式.
+ *
+ * **/
 void forward_region_layer(const region_layer l, network_state state)
 {
     int i,j,b,t,n;
@@ -248,7 +234,8 @@ void forward_region_layer(const region_layer l, network_state state)
         for (b = 0; b < l.batch; ++b){
             for(i = 0; i < l.h*l.w*l.n; ++i){
                 int index = size*i + b*l.outputs;
-                softmax_tree(l.output + index + 5, 1, 0, 1, l.softmax_tree, l.output + index + 5);
+                softmax_tree(l.output + index + 5, 1, 0, 1,
+                             l.softmax_tree, l.output + index + 5);
             }
         }
     } else if (l.softmax){
@@ -256,22 +243,24 @@ void forward_region_layer(const region_layer l, network_state state)
             for(i = 0; i < l.h*l.w*l.n; ++i){      // 遍历每一个anchor, anchor中的所有类别值过softmax函数得到对应的概率值
                 int index = size*i + b*l.outputs;  // 解释同上
                 // 这里是对预测类别得分进行softmax()操作, 得到对应的概率值
-                softmax(l.output + index + 5, l.classes, 1, l.output + index + 5, 1);
+                softmax(l.output + index + 5, l.classes,
+                        1, l.output + index + 5, 1);
             }
         }
     }
 #endif
     if(!state.train) return;
     memset(l.delta, 0, l.outputs * l.batch * sizeof(float));  // l.delta中梯度清零
-    float avg_iou = 0;
-    float recall = 0;
+    float avg_iou = 0;     // 所有gt与最佳anchor的之间都有iou, 然后avg += iou, 然后除以count
+    float recall = 0;      // 所有gt与对应的l.n个预测框中某一个的iou>0.5,则recall+1, 然后除以count
     float avg_cat = 0;
-    float avg_obj = 0;
-    float avg_anyobj = 0;
-    int count = 0;
+    float avg_obj = 0;     // 所有与gt对应的最佳anchor对应的pred_bbox的conf值的累加, 然后除以count
+    float avg_anyobj = 0;  // 所有pred_bbox输出的conf的累加值, 然后除以count, 无实质用处
+    int count = 0;         // 一张图片中有效的gt总数
     int class_count = 0;
-    *(l.cost) = 0;  // 损失值清零
+    *(l.cost) = 0;         // 损失值清零
     for (b = 0; b < l.batch; ++b) {
+
         if(l.softmax_tree){
             int onlyclass_id = 0;
             for(t = 0; t < l.max_boxes; ++t){
@@ -291,7 +280,8 @@ void forward_region_layer(const region_layer l, network_state state)
                         }
                     }
                     int index = size*maxi + b*l.outputs + 5;
-                    delta_region_class(l.output, l.delta, index, class_id, l.classes, l.softmax_tree, l.class_scale, &avg_cat, l.focal_loss);
+                    delta_region_class(l.output, l.delta, index, class_id, l.classes, l.softmax_tree,
+                                       l.class_scale, &avg_cat, l.focal_loss);
                     ++class_count;
                     onlyclass_id = 1;
                     break;
@@ -299,6 +289,7 @@ void forward_region_layer(const region_layer l, network_state state)
             }
             if(onlyclass_id) continue;
         }
+
         // 遍历每一个网格中的每一个anchor
         for (j = 0; j < l.h; ++j) {          // 遍历网格高
             for (i = 0; i < l.w; ++i) {      // 遍历网格宽
@@ -315,7 +306,7 @@ void forward_region_layer(const region_layer l, network_state state)
                         box truth = float_to_box(state.truth + t*l.truth_size + b*l.truths);
                         // 得到gt对应类别id
                         int class_id = state.truth[t * l.truth_size + b*l.truths + 4];
-                        if (class_id >= l.classes) continue; // if label contains class_id more than number of classes in the cfg-file
+                        if (class_id >= l.classes) continue;
                         // 遍历完所有的gt,及时退出for循环
                         if(!truth.x) break; // continue;
                         float iou = box_iou(pred, truth);  // 计算pred与gt的iou
@@ -367,10 +358,11 @@ void forward_region_layer(const region_layer l, network_state state)
         for(t = 0; t < l.max_boxes; ++t){
             // 获取gt信息
             box truth = float_to_box(state.truth + t*l.truth_size + b*l.truths);
-            // 获取类别信息.
+            // 获取gt对应的类别信息class_id.
             int class_id = state.truth[t * l.truth_size + b*l.truths + 4];
             if (class_id >= l.classes) {
-                printf("\n Warning: in txt-labels class_id=%d >= classes=%d in cfg-file. In txt-labels class_id should be [from 0 to %d] \n", class_id, l.classes, l.classes-1);
+                printf("\n Warning: in txt-labels class_id=%d >= classes=%d in cfg-file. "
+                       "In txt-labels class_id should be [from 0 to %d] \n", class_id, l.classes, l.classes-1);
                 getchar();
                 continue; // if label contains class_id more than number of classes in the cfg-file
             }
@@ -414,7 +406,8 @@ void forward_region_layer(const region_layer l, network_state state)
             //printf("%d %f (%f, %f) %f x %f\n", best_n, best_iou, truth.x, truth.y, truth.w, truth.h);
             // 经过上述for(n = 0; n < l.n; ++n)循环, 能找出每一个gt最佳匹配的anchor的best_index和对应best_iou信息
             // delta_region_box得到的pred_bbox(经gt最佳匹配的anchor和预测(tx,ty,tw,th)转换而来)
-            float iou = delta_region_box(truth, l.output, l.biases, best_n, best_index, i, j, l.w, l.h, l.delta, l.coord_scale);
+            float iou = delta_region_box(truth, l.output, l.biases, best_n, best_index,
+                                         i, j, l.w, l.h, l.delta, l.coord_scale);
             if(iou > .5) recall += 1;
             avg_iou += iou;
 
@@ -422,17 +415,20 @@ void forward_region_layer(const region_layer l, network_state state)
             avg_obj += l.output[best_index + 4];
             // l.delta[best_index+4]记录着正样本的pred_bbox(anchor)的IOU损失对应的梯度信息,
             // 损失表达式: (IOU_truth_r - bij_k_o)^2, IOU_truth_r即为GT与pred_bbox之间的iou, bij_k_o网络输出的iou
-            l.delta[best_index + 4] = l.object_scale * (1 - l.output[best_index + 4]) * logistic_gradient(l.output[best_index + 4]);
+            l.delta[best_index + 4] = l.object_scale * (1 - l.output[best_index + 4]) *
+                                      logistic_gradient(l.output[best_index + 4]);
             // yolov2采用的是: (iou - l.output[best_index + 4])
             // yolov3采用的是: (1 - l.output[best_index + 4])
             if (l.rescore) {
-                l.delta[best_index + 4] = l.object_scale * (iou - l.output[best_index + 4]) * logistic_gradient(l.output[best_index + 4]);
+                l.delta[best_index + 4] = l.object_scale * (iou - l.output[best_index + 4]) *
+                                          logistic_gradient(l.output[best_index + 4]);
             }
 
             if (l.map) class_id = l.map[class_id];
             // 从l.outputs[best_index+5]~l.outputs[best_index+5+classes]是存储这该pred_bbox的预测类别概率值.
             // delta_region_class主要是计算类别损失对应的梯度信息
-            delta_region_class(l.output, l.delta, best_index + 5, class_id, l.classes, l.softmax_tree, l.class_scale, &avg_cat, l.focal_loss);
+            delta_region_class(l.output, l.delta, best_index + 5, class_id, l.classes,
+                               l.softmax_tree, l.class_scale, &avg_cat, l.focal_loss);
             ++count;
             ++class_count;
         }
@@ -441,8 +437,10 @@ void forward_region_layer(const region_layer l, network_state state)
     #ifndef GPU
     flatten(l.delta, l.w*l.h, size*l.n, l.batch, 0);
     #endif
+    // TODO: l->cost的损失计算非常奇怪, 怎么是l.delta*l.delta? 这明显会有问题啊?还是我没看懂?
     *(l.cost) = pow(mag_array(l.delta, l.outputs * l.batch), 2);
-    printf("Region Avg IOU: %f, Class: %f, Obj: %f, No Obj: %f, Avg Recall: %f,  count: %d\n", avg_iou/count, avg_cat/class_count, avg_obj/count, avg_anyobj/(l.w*l.h*l.n*l.batch), recall/count, count);
+    printf("Region Avg IOU: %f, Class: %f, Obj: %f, No Obj: %f, Avg Recall: %f,  gt_nums: %d\n",
+           avg_iou/count, avg_cat/class_count, avg_obj/count, avg_anyobj/(l.w*l.h*l.n*l.batch), recall/count, count);
 }
 
 void backward_region_layer(const region_layer l, network_state state)
