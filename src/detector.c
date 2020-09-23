@@ -173,7 +173,7 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
     net.train_images_num = train_images_num;
     args.d = &buffer;
     args.type = DETECTION_DATA;
-    args.threads = 0;    // 16 or 64, 调试时用单线程分析
+    args.threads = 16;    // 16 or 64, 调试时用单线程分析
     // 数组增强相关
     args.angle = net.angle;
     args.gaussian_noise = net.gaussian_noise;
@@ -192,7 +192,7 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
 #ifdef OPENCV
     //int num_threads = get_num_threads();
     //if(num_threads > 2) args.threads = get_num_threads() - 2;
-    args.threads = 0 * ngpus;   // 3 for - Amazon EC2 Tesla V100: p3.2xlarge (8 logical cores) - p3.16xlarge
+    args.threads = 12 * ngpus;   // 3 for - Amazon EC2 Tesla V100: p3.2xlarge (8 logical cores) - p3.16xlarge
     //args.threads = 12 * ngpus;    // Ryzen 7 2700X (16 logical cores)
     mat_cv* img = NULL;
     float max_img_loss = net.max_chart_loss;
