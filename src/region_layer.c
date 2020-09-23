@@ -369,6 +369,8 @@ void forward_region_layer(const region_layer l, network_state state)
             }
             // 遍历完所有的gt, 即时退出
             if(!truth.x) break; // continue;
+            // debug:
+            // printf("truth.x = %f, truth.y = %f, truth.w = %f, truth.h = %f\n", truth.x, truth.y, truth.w, truth.h);
             float best_iou = 0;
             int best_index = 0;
             int best_n = 0;
@@ -440,8 +442,9 @@ void forward_region_layer(const region_layer l, network_state state)
     #endif
     // TODO: l->cost的损失计算非常奇怪, 怎么是l.delta*l.delta? 这明显会有问题啊?还是我没看懂?
     *(l.cost) = pow(mag_array(l.delta, l.outputs * l.batch), 2);
-    printf("Region Avg IOU: %f, Class: %f, Obj: %f, No Obj: %f, Avg Recall: %f,  gt_nums: %d\n",
-           avg_iou/count, avg_cat/class_count, avg_obj/count, avg_anyobj/(l.w*l.h*l.n*l.batch), recall/count, count);
+    printf("Avg_loss: %f, Avg_iou: %f, Class: %f, Obj: %f, No Obj: %f, Avg Recall: %f,  gt_nums: %d\n",
+                                            *(l.cost) / count, avg_iou/count, avg_cat/class_count, avg_obj/count,
+                                            avg_anyobj/(l.w*l.h*l.n*l.batch), recall/count, count);
 }
 
 void backward_region_layer(const region_layer l, network_state state)

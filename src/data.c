@@ -1169,8 +1169,11 @@ void blend_truth_mosaic(float *new_truth, int boxes, int truth_size, float *old_
 
 #include "http_stream.h"
 
-data load_data_detection(int n, char **paths, int m, int w, int h, int c, int boxes, int truth_size, int classes, int use_flip, int use_gaussian_noise, int use_blur, int use_mixup,
-    float jitter, float resize, float hue, float saturation, float exposure, int mini_batch, int track, int augment_speed, int letter_box, int mosaic_bound, int contrastive, int contrastive_jit_flip, int show_imgs)
+data load_data_detection(int n, char **paths, int m, int w, int h, int c, int boxes, int truth_size,
+                         int classes, int use_flip, int use_gaussian_noise, int use_blur, int use_mixup,
+                         float jitter, float resize, float hue, float saturation, float exposure, int mini_batch,
+                         int track, int augment_speed, int letter_box, int mosaic_bound, int contrastive,
+                         int contrastive_jit_flip, int show_imgs)
 {
     const int random_index = random_gen();
     c = c ? c : 3;
@@ -1473,9 +1476,16 @@ data load_data_detection(int n, char **paths, int m, int w, int h, int c, int bo
             release_mat(&src);
             free(truth);
         }
+
+        /*
+        // debug:
+        int k;
+        for(k = 0; k < n; k++)
+            printf("random_paths[%d] = %s\n", k, random_paths[k]);
+         */
+
         if (random_paths) free(random_paths);
     }
-
 
     return d;
 }
