@@ -251,7 +251,10 @@ void forward_batchnorm_layer(layer l, network_state state)
 void backward_batchnorm_layer(const layer l, network_state state)
 {
     // 这里是对论文中最后一个公式(y=γ*x̅+β)的缩放系数γ求梯度
-    // ∂L/∂γ = ∑(∂L/∂y)*x̅
+    // ∂L/∂γ = ∑(∂L/∂y)*x̅. 可以看出l.delta * l.x_norm即为新求出的∂L/∂γ, 然后l.scale_updates += sum
+    // 结合update_convolutional_layer()可知得到的l.scale_updates其实是滑动平均值.
+    // sum += l.delta * l.x_norm
+    // l.scale_updates += sum;
     backward_scale_cpu(l.x_norm, l.delta, l.batch, l.out_c, l.out_w*l.out_h, l.scale_updates);
     // ∂L/∂x̅ = γ * ∂L/∂y, 其中γ = l.scales, ∂L/∂y = l.delta
     scale_bias(l.delta, l.scales, l.batch, l.out_c, l.out_h*l.out_w);

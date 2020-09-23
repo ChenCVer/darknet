@@ -1858,13 +1858,13 @@ void update_convolutional_layer(convolutional_layer l, int batch, float learning
     axpy_cpu(l.nweights, learning_rate / batch, l.weight_updates, 1, l.weights, 1);
     // l.weight_updates = momentum * l.weight_updates
     scal_cpu(l.nweights, momentum, l.weight_updates, 1);
-
+    // 如果有BN层, 则l.biases指的是y=γ*x̅+β中的β, 如果没有BN层, 则l.biases指的是y = wx+b中的b.
     // l.biases = l.biases - (learning_rate/batch)*l.bias_updates
     axpy_cpu(l.n, learning_rate / batch, l.bias_updates, 1, l.biases, 1);
     // l.bias_updates = l.bias_updates * momentum
     scal_cpu(l.n, momentum, l.bias_updates, 1);
 
-    // 这个l.scales, 跟deconv有关
+    // BN层参数, l.scales也即: y=γ*x̅+β中的γ. l.scale_updates = ∂L/∂γ.
     if (l.scales) {
         axpy_cpu(l.n, learning_rate / batch, l.scale_updates, 1, l.scales, 1);
         scal_cpu(l.n, momentum, l.scale_updates, 1);
