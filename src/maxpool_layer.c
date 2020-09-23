@@ -390,8 +390,7 @@ void forward_maxpool_layer(const maxpool_layer l, network_state state)
 **      而对于最大池化层来说,每一个输出对于加权输入的导数值都是1,同时并没有权重及偏置这些需要训练的参数,自然不再需要第
 **      一步; 对于第二步为什么会如此简单,可以参考：https://www.zybuluo.com/hanbingtao/note/485480
 */
-void backward_maxpool_layer(const maxpool_layer l, network_state state)
-{
+void backward_maxpool_layer(const maxpool_layer l, network_state state) {
     int i;
     // 获取当前最大池化层l的输出尺寸h,w
     int h = l.out_h;
@@ -411,8 +410,8 @@ void backward_maxpool_layer(const maxpool_layer l, network_state state)
     // ========================================================================
     // #pragma omp parallel for是OpenMP中的一个指令, 表示接下来的for循环将被多线程执行,
     // 另外每次循环之间不能有关系.
-    #pragma omp parallel for
-    for(i = 0; i < h*w*c*l.batch; ++i){
+#pragma omp parallel for
+    for (i = 0; i < h * w * c * l.batch; ++i) {
         // 遍历的基准是以当前层的输出元素为基准的,l.indexes记录了当前层每一个输出元素与上一层
         // 哪一个输出元素有真正联系(也即上一层对应池化核区域中最大值元素的索引),所以index是上
         // 一层中所有输出元素的索引,且该元素在当前层某个池化域中充当了最大值元素,这个元素的敏感
@@ -426,6 +425,12 @@ void backward_maxpool_layer(const maxpool_layer l, network_state state)
         int index = l.indexes[i];  // l.indexes里面记录着maxpool层的输出特征图中每一个位置与之关联在输入特征层中的位置索引.
         state.delta[index] += l.delta[i];  //TODO: 这里使用+= 应该主要考虑当stride<kernel_w时有重叠的情况? 后期仔细分析.
     }
+
+    /*debug
+    printf("maxpooling[%d]\n", state.index);
+    for(i = 0; i<10; i++)
+        printf("state.delta[%d] = %f\n", i, state.delta[i]);
+    */
 }
 
 

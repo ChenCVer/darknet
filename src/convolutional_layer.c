@@ -1781,7 +1781,12 @@ void backward_convolutional_layer(convolutional_layer l, network_state state)
             // a: (l.out_c) * (l.out_h*l*out_w)
             // b: (l.c * l.size * l.size) * (l.out_h * l.out_w)
             // c: (l.n) * (l.c*l.size*l.size)(注意：l.n = l.out_c)
-            // 故要进行a * b + c计算, 必须对b进行转置(否则行列不匹配), 因故调用gemm_nt()函数   
+            // 故要进行a * b + c计算, 必须对b进行转置(否则行列不匹配), 因故调用gemm_nt()函数
+            // 注意: 结合update_convolutional_layer()函数可知:
+            // c = a * b + c  => ∂E/∂w = δ_l*a_l-1 + ∂E/∂w, 其中δ_l*a_l-1为新求出的∂E/∂w, 记为: ∂E/∂w_new,
+            // 而∂E/∂w则为之前的旧结果, 并且这个∂E/∂w在update_convolutional_layer()函数中被乘以了momentum系数,
+            // 我们记为:∂E/∂w_old, 综合所知:新求出的∂E/∂w其实是动量, 也即:
+            // ∂E/∂w(动量) = ∂E/∂w_new + ∂E/∂w_old(该数已经被乘以过mom).
             gemm(0, 1, m, n, k, 1, a, k, b, k, 1, c, n);
             // 接下来的if部分, 用当前层(第l层)的敏感度图l.delta(δ_l)以及权重l.weights(w_l,但是还未更新)来
             // 计算上一层(第l-1层)网络的敏感度图l.delta_l-1,也即δ_l-1:

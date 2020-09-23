@@ -116,7 +116,6 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
     }
     srand(time(0));  // 再次设计随机数种子
     network net = nets[0];     // 第一块显卡上的网络
-    // TODO: 2020-9-18: Qustion: 回家用自己电脑验证下: visualize_network(nets[0]);
     // visualize_network(nets[0]);
     // 实际的batch_size等于batch和subdivisions的积
     const int actual_batch_size = net.batch * net.subdivisions;
@@ -174,7 +173,7 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
     net.train_images_num = train_images_num;
     args.d = &buffer;
     args.type = DETECTION_DATA;
-    args.threads = 1;    // 16 or 64, 调试时用单线程分析
+    args.threads = 0;    // 16 or 64, 调试时用单线程分析
     // 数组增强相关
     args.angle = net.angle;
     args.gaussian_noise = net.gaussian_noise;
@@ -210,7 +209,8 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
         if (net.sequential_subdivisions) args.threads = net.sequential_subdivisions * ngpus;
         else args.threads = net.subdivisions * ngpus;
         args.mini_batch = net.batch / net.time_steps;
-        printf("\n Tracking! batch = %d, subdiv = %d, time_steps = %d, mini_batch = %d \n", net.batch, net.subdivisions, net.time_steps, args.mini_batch);
+        printf("\n Tracking! batch = %d, subdiv = %d, time_steps = %d, mini_batch = %d \n",
+               net.batch, net.subdivisions, net.time_steps, args.mini_batch);
     }
     //printf(" imgs = %d \n", imgs);
     // *****重点掌握darknet的数据加载机制*****
@@ -294,7 +294,7 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
         }
 
         load_thread = load_data(args);  // 为下一轮训练加载数据.
-        //wait_key_cv(500);
+        // wait_key_cv(500);
 
         /*
         int k;

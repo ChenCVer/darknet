@@ -305,6 +305,7 @@ void update_network(network net)
 {
     int i;
     int update_batch = net.batch*net.subdivisions;
+    printf("update_batch = %d\n", update_batch);
     float rate = get_current_rate(net);  // rate即为学习率: learning_rate
     for(i = 0; i < net.n; ++i){
         layer l = net.layers[i];
