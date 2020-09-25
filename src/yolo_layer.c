@@ -19,18 +19,18 @@ layer make_yolo_layer(int batch, int w, int h, int n, int total, int *mask, int 
     layer l = { (LAYER_TYPE)0 };
     l.type = YOLO;
 
-    l.n = n;
-    l.total = total;
+    l.n = n;           // 当前层分配的anchor数
+    l.total = total;   // 总的anchors数
     l.batch = batch;
     l.h = h;
     l.w = w;
-    l.c = n*(classes + 4 + 1);
+    l.c = n*(classes + 4 + 1);  // yolo层的特征通道数
     l.out_w = l.w;
     l.out_h = l.h;
     l.out_c = l.c;
     l.classes = classes;
-    l.cost = (float*)xcalloc(1, sizeof(float));
-    l.biases = (float*)xcalloc(total * 2, sizeof(float));
+    l.cost = (float*)xcalloc(1, sizeof(float));   // yolo层损失
+    l.biases = (float*)xcalloc(total * 2, sizeof(float));  // 装载anchor
     if(mask) l.mask = mask;
     else{
         l.mask = (int*)xcalloc(n, sizeof(int));
@@ -39,18 +39,18 @@ layer make_yolo_layer(int batch, int w, int h, int n, int total, int *mask, int 
         }
     }
     l.bias_updates = (float*)xcalloc(n * 2, sizeof(float));
-    l.outputs = h*w*n*(classes + 4 + 1);
+    l.outputs = h*w*n*(classes + 4 + 1);  // yolo层总共输出元素
     l.inputs = l.outputs;
     l.max_boxes = max_boxes;
-    l.truth_size = 4 + 2;
-    l.truths = l.max_boxes*l.truth_size;    // 90*(4 + 1);
-    l.labels = (int*)xcalloc(batch * l.w*l.h*l.n, sizeof(int));
-    for (i = 0; i < batch * l.w*l.h*l.n; ++i) l.labels[i] = -1;
+    l.truth_size = 4 + 2;  // 这个truth_size怎么是4+2
+    l.truths = l.max_boxes*l.truth_size;    // 200*(4 + 1);
+    l.labels = (int*)xcalloc(batch * l.w*l.h*l.n, sizeof(int));  // TODO: ??
+    for (i = 0; i < batch * l.w*l.h*l.n; ++i) l.labels[i] = -1;  // 初始化label
 
-    l.delta = (float*)xcalloc(batch * l.outputs, sizeof(float));
-    l.output = (float*)xcalloc(batch * l.outputs, sizeof(float));
+    l.delta = (float*)xcalloc(batch * l.outputs, sizeof(float));    // 存储误差项
+    l.output = (float*)xcalloc(batch * l.outputs, sizeof(float));   // 存储输出结果
     for(i = 0; i < total*2; ++i){
-        l.biases[i] = .5;
+        l.biases[i] = .5;  // 初始化: l.biases
     }
 
     l.forward = forward_yolo_layer;
@@ -78,7 +78,7 @@ layer make_yolo_layer(int batch, int w, int h, int n, int total, int *mask, int 
 #endif
 
     fprintf(stderr, "yolo\n");
-    srand(time(0));
+    srand(time(0));  // 这里怎么还初始化随机种子?
 
     return l;
 }

@@ -443,13 +443,14 @@ float *get_classes_multipliers(char *cpc, const int classes, const float max_del
 
 layer parse_yolo(list *options, size_params params)
 {
-    int classes = option_find_int(options, "classes", 20);
-    int total = option_find_int(options, "num", 1);
+    int classes = option_find_int(options, "classes", 20);  // 要识别的类别数
+    int total = option_find_int(options, "num", 1);  // num_anchors
     int num = total;
-    char *a = option_find_str(options, "mask", 0);
+    char *a = option_find_str(options, "mask", 0);  // 表示某一个yolo层用到的anchor序列
     int *mask = parse_yolo_mask(a, &num);
-    int max_boxes = option_find_int_quiet(options, "max", 200);
+    int max_boxes = option_find_int_quiet(options, "max", 200);  // 一张图片中的最大gt数
     layer l = make_yolo_layer(params.batch, params.w, params.h, num, total, mask, classes, max_boxes);
+    // params.inputs = h x w x num_anchors x (num_class + xywh + conf)
     if (l.outputs != params.inputs) {
         printf("Error: l.outputs == params.inputs \n");
         printf("filters= in the [convolutional]-layer doesn't correspond to classes= or mask= in [yolo]-layer \n");
@@ -459,15 +460,15 @@ layer parse_yolo(list *options, size_params params)
 
     l.max_delta = option_find_float_quiet(options, "max_delta", FLT_MAX);   // set 10
     char *cpc = option_find_str(options, "counters_per_class", 0);
-    l.classes_multipliers = get_classes_multipliers(cpc, classes, l.max_delta);
+    l.classes_multipliers = get_classes_multipliers(cpc, classes, l.max_delta);  // what is this?
 
-    l.label_smooth_eps = option_find_float_quiet(options, "label_smooth_eps", 0.0f);
+    l.label_smooth_eps = option_find_float_quiet(options, "label_smooth_eps", 0.0f);  // 标签平滑
     l.scale_x_y = option_find_float_quiet(options, "scale_x_y", 1);
     l.objectness_smooth = option_find_int_quiet(options, "objectness_smooth", 0);
     l.iou_normalizer = option_find_float_quiet(options, "iou_normalizer", 0.75);
     l.cls_normalizer = option_find_float_quiet(options, "cls_normalizer", 1);
     char *iou_loss = option_find_str_quiet(options, "iou_loss", "mse");   //  "iou");
-
+    // TODO: 2020-0925: 关于iou loss中的CIOU, DIOU和GIOU后期重点研究.
     if (strcmp(iou_loss, "mse") == 0) l.iou_loss = MSE;
     else if (strcmp(iou_loss, "giou") == 0) l.iou_loss = GIOU;
     else if (strcmp(iou_loss, "diou") == 0) l.iou_loss = DIOU;
@@ -528,7 +529,7 @@ layer parse_yolo(list *options, size_params params)
     char *map_file = option_find_str(options, "map", 0);
     if (map_file) l.map = read_map(map_file);
 
-    a = option_find_str(options, "anchors", 0);
+    a = option_find_str(options, "anchors", 0);  // 获取anchor
     if (a) {
         int len = strlen(a);
         int n = 1;
@@ -1053,9 +1054,9 @@ layer parse_activation(list *options, size_params params)
 layer parse_upsample(list *options, size_params params, network net)
 {
 
-    int stride = option_find_int(options, "stride", 2);
+    int stride = option_find_int(options, "stride", 2);  // 上采样倍数
     layer l = make_upsample_layer(params.batch, params.w, params.h, params.c, stride);
-    l.scale = option_find_float_quiet(options, "scale", 1);
+    l.scale = option_find_float_quiet(options, "scale", 1); // 这个scale用来干啥?
     return l;
 }
 
