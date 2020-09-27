@@ -444,10 +444,10 @@ float *get_classes_multipliers(char *cpc, const int classes, const float max_del
 layer parse_yolo(list *options, size_params params)
 {
     int classes = option_find_int(options, "classes", 20);  // 要识别的类别数
-    int total = option_find_int(options, "num", 1);  // num_anchors
+    int total = option_find_int(options, "num", 1);  // 总共的num_anchors
     int num = total;
     char *a = option_find_str(options, "mask", 0);  // 表示某一个yolo层用到的anchor序列
-    int *mask = parse_yolo_mask(a, &num);
+    int *mask = parse_yolo_mask(a, &num);  // 把mask字符串系列转换成int*类型
     int max_boxes = option_find_int_quiet(options, "max", 200);  // 一张图片中的最大gt数
     layer l = make_yolo_layer(params.batch, params.w, params.h, num, total, mask, classes, max_boxes);
     // params.inputs = h x w x num_anchors x (num_class + xywh + conf)
@@ -487,7 +487,7 @@ layer parse_yolo(list *options, size_params params)
         l.iou_thresh_kind = IOU;
     }
 
-    l.beta_nms = option_find_float_quiet(options, "beta_nms", 0.6);
+    l.beta_nms = option_find_float_quiet(options, "beta_nms", 0.6);  // NMS阈值.
     char *nms_kind = option_find_str_quiet(options, "nms_kind", "default");
     if (strcmp(nms_kind, "default") == 0) l.nms_kind = DEFAULT_NMS;
     else {
@@ -922,8 +922,10 @@ layer parse_shortcut(list *options, size_params params, network net)
 
     char *weights_type_str = option_find_str_quiet(options, "weights_type", "none");
     WEIGHTS_TYPE_T weights_type = NO_WEIGHTS;
-    if(strcmp(weights_type_str, "per_feature") == 0 || strcmp(weights_type_str, "per_layer") == 0) weights_type = PER_FEATURE;
-    else if (strcmp(weights_type_str, "per_channel") == 0) weights_type = PER_CHANNEL;
+    if(strcmp(weights_type_str, "per_feature") == 0 || strcmp(weights_type_str, "per_layer") == 0)
+        weights_type = PER_FEATURE;
+    else if (strcmp(weights_type_str, "per_channel") == 0)
+        weights_type = PER_CHANNEL;
     else if (strcmp(weights_type_str, "none") != 0) {
         printf("Error: Incorrect weights_type = %s \n Use one of: none, per_feature, per_channel \n", weights_type_str);
         getchar();
@@ -932,8 +934,10 @@ layer parse_shortcut(list *options, size_params params, network net)
 
     char *weights_normalization_str = option_find_str_quiet(options, "weights_normalization", "none");
     WEIGHTS_NORMALIZATION_T weights_normalization = NO_NORMALIZATION;
-    if (strcmp(weights_normalization_str, "relu") == 0 || strcmp(weights_normalization_str, "avg_relu") == 0) weights_normalization = RELU_NORMALIZATION;
-    else if (strcmp(weights_normalization_str, "softmax") == 0) weights_normalization = SOFTMAX_NORMALIZATION;
+    if (strcmp(weights_normalization_str, "relu") == 0 || strcmp(weights_normalization_str, "avg_relu") == 0)
+        weights_normalization = RELU_NORMALIZATION;
+    else if (strcmp(weights_normalization_str, "softmax") == 0)
+        weights_normalization = SOFTMAX_NORMALIZATION;
     else if (strcmp(weights_type_str, "none") != 0) {
         printf("Error: Incorrect weights_normalization = %s \n Use one of: none, relu, softmax \n", weights_normalization_str);
         getchar();
@@ -943,15 +947,19 @@ layer parse_shortcut(list *options, size_params params, network net)
     char *l = option_find(options, "from");
     int len = strlen(l);
     if (!l) error("Route Layer must specify input layers: from = ...");
-    int n = 1;
+    int n = 1;  // shortcut的层数
     int i;
     for (i = 0; i < len; ++i) {
         if (l[i] == ',') ++n;
     }
 
+    // layers里面记录着需要shortcut层短接的层数的索引.
     int* layers = (int*)calloc(n, sizeof(int));
+    // sizes里面记录着每个shortcut层对应的输出的outputs大小
     int* sizes = (int*)calloc(n, sizeof(int));
+    // layers_output里面记录着: 每个shortcut层对应的输出的output数据.
     float **layers_output = (float **)calloc(n, sizeof(float *));
+    // layers_delta里面记录着: 每个shortcut层对应的delta.
     float **layers_delta = (float **)calloc(n, sizeof(float *));
     float **layers_output_gpu = (float **)calloc(n, sizeof(float *));
     float **layers_delta_gpu = (float **)calloc(n, sizeof(float *));
@@ -978,7 +986,7 @@ layer parse_shortcut(list *options, size_params params, network net)
 
     free(layers_output_gpu);
     free(layers_delta_gpu);
-
+    // 输出打印该层的信息.
     for (i = 0; i < n; ++i) {
         int index = layers[i];
         assert(params.w == net.layers[index].out_w && params.h == net.layers[index].out_h);

@@ -22,11 +22,11 @@ layer make_shortcut_layer(int batch, int n, int *input_layers, int* input_sizes,
     l.type = SHORTCUT;
     l.batch = batch;
     l.activation = activation;  // 线性激活函数: f(x) = x
-    l.n = n;
+    l.n = n;                    // shortcut的层数, 一般均为1.
     l.input_layers = input_layers;  // input_layers表示本层的数据是shortcut哪个层
-    l.input_sizes = input_sizes;
-    l.layers_output = layers_output;
-    l.layers_delta = layers_delta;
+    l.input_sizes = input_sizes;    // input_sizes表示shortcut层短接的层的输出大小
+    l.layers_output = layers_output;  // shortcut层短接的层的输出数据
+    l.layers_delta = layers_delta;   // shortcut层短接的层对应的误差项.
     l.weights_type = weights_type;
     l.weights_normalization = weights_normalization;
     l.learning_rate_scale = 1;  // not necessary
@@ -37,14 +37,14 @@ layer make_shortcut_layer(int batch, int n, int *input_layers, int* input_sizes,
     l.w = l.out_w = w;
     l.h = l.out_h = h;
     l.c = l.out_c = c;
-    l.outputs = w*h*c;
-    l.inputs = l.outputs;
+    l.outputs = w*h*c;     // shortcut层输出大小.
+    l.inputs = l.outputs;  // shortcut层一般输入和输出相等.
 
     //if(w != w2 || h != h2 || c != c2)
     //    fprintf(stderr, " w = %d, w2 = %d, h = %d, h2 = %d, c = %d, c2 = %d \n", w, w2, h, h2, c, c2);
 
     l.index = l.input_layers[0];
-    // shortcut层还有梯度?
+    // TODO: shortcut层还有梯度?
     if (train) l.delta = (float*)xcalloc(l.outputs * batch, sizeof(float));
     l.output = (float*)xcalloc(l.outputs * batch, sizeof(float));
 
@@ -156,9 +156,8 @@ void resize_shortcut_layer(layer *l, int w, int h, network *net)
 }
 
 void forward_shortcut_layer(const layer l, network_state state)
-{
-    printf("l.index = %d\n", l.index);
-    int from_w = state.net.layers[l.index].w;
+{   // TODO: 很奇怪,这里怎么会是获取短接的层的输入特征图的大小??
+    int from_w = state.net.layers[l.index].w;  // layers[l.index].w是获取该层的输入特征层的宽, 并不是输出.
     int from_h = state.net.layers[l.index].h;
     int from_c = state.net.layers[l.index].c;
     // TODO: 2020-09-25: 分析至shortcut的forward.

@@ -101,7 +101,23 @@ static float relu(float src) {
     return 0;
 }
 
-void shortcut_multilayer_cpu(int size, int src_outputs, int batch, int n, int *outputs_of_layers, float **layers_output, float *out, float *in, float *weights, int nweights, WEIGHTS_NORMALIZATION_T weights_normalization)
+/**
+ * @param size: int, shortcut总的输出尺寸大小, l.outputs * l.batch
+ * @param src_outputs: int, shortcut层输出尺寸大小: l.outputs
+ * @param batch:  int, batch大小
+ * @param n: int, shortcut的层数, 一般都为1
+ * @param outputs_of_layers: int*, l.input_sizes, shortcut层短接的层的输出大小
+ * @param layers_output: float**, l.layers_output, shortcut层短接的层的输出的output数据.
+ * @param out: float*, l.output, shortcut层的输出数据
+ * @param in:  float*, state.input, shortcut自有的输入数据, 这个数据来自于shortcut层的上一层,比如
+ *             shortcut层的编号是4,则state.input层就来自于编号为3的层的输出.
+ * @param weights: l.weights
+ * @param nweights: l.nweights
+ * @param weights_normalization:
+ */
+void shortcut_multilayer_cpu(int size, int src_outputs, int batch, int n, int *outputs_of_layers,
+                             float **layers_output, float *out, float *in, float *weights,
+                             int nweights, WEIGHTS_NORMALIZATION_T weights_normalization)
 {
     // nweights - l.n or l.n*l.c or (l.n*l.c*l.h*l.w)
     const int layer_step = nweights / (n + 1);    // 1 or l.c or (l.c * l.h * l.w)
@@ -110,12 +126,13 @@ void shortcut_multilayer_cpu(int size, int src_outputs, int batch, int n, int *o
 
     int id;
     #pragma omp parallel for
-    for (id = 0; id < size; ++id) {
+    for (id = 0; id < size; ++id) {  // size是shortcut总的输出尺寸大小
 
         int src_id = id;
-        const int src_i = src_id % src_outputs;
-        src_id /= src_outputs;
-        int src_b = src_id;
+        // src_id相当于获取第l.batch-1中src_outputs的id
+        const int src_i = src_id % src_outputs;  // src_outputs为batch=1时, shortcut层的输出数据大小.
+        src_id /= src_outputs;                   // src_id应该是在取l.batch中的batch_id
+        int src_b = src_id;                      // 猜测src_b也即: src_batch_id
 
         float sum = 1, max_val = -FLT_MAX;
         int i;
@@ -146,14 +163,17 @@ void shortcut_multilayer_cpu(int size, int src_outputs, int batch, int n, int *o
         }
         else out[id] = in[id];
 
-        // layers
-        for (i = 0; i < n; ++i) {
-            int add_outputs = outputs_of_layers[i];
-            if (src_i < add_outputs) {
+        // layers, 遍历每个短接的层, 这里相当于: 对每个短接的层进行遍历, 然后对应位置相加即为shortcut层输出结果.
+        for (i = 0; i < n; ++i) {  // 一般情况: add_outputs = src_outputs
+            int add_outputs = outputs_of_layers[i];   // 获取shortcut层的每个短接的层的输出大小.
+            if (src_i < add_outputs) {                // 一般情况下: src_i < add_outputs
+                // src_b = id / src_outputs;
+                // src_i = id % src_outputs;
+                // add_index表示第src_b个shortcut输出层中的第i个位置.
                 int add_index = add_outputs*src_b + src_i;
                 int out_index = id;
 
-                float *add = layers_output[i];
+                float *add = layers_output[i];  // 获取shortcut层短接的层对应的输出数据.
 
                 if (weights) {
                     const int weights_index = src_i / step + (i + 1)*layer_step;  // [0 or c or (c, h ,w)]
@@ -163,7 +183,7 @@ void shortcut_multilayer_cpu(int size, int src_outputs, int batch, int n, int *o
 
                     out[out_index] += add[add_index] * w; // [0 or c or (c, h ,w)]
                 }
-                else out[out_index] += add[add_index];
+                else out[out_index] += add[add_index];  // 对所有shortcut层短接的层进行通道方向上累加.
             }
         }
     }
