@@ -83,7 +83,8 @@ void backward_upsample_layer(const layer l, network_state state)
 {
     if(l.reverse){
         upsample_cpu(l.delta, l.out_w, l.out_h, l.c, l.batch, l.stride, 1, l.scale, state.delta);
-    }else{
+    }
+    else{
         upsample_cpu(state.delta, l.w, l.h, l.c, l.batch, l.stride, 0, l.scale, l.delta);
     }
 }

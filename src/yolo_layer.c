@@ -417,7 +417,7 @@ void forward_yolo_layer(const layer l, network_state state)
 #endif
 
     // delta is zeroed
-    memset(l.delta, 0, l.outputs * l.batch * sizeof(float));  // 梯度清零
+    memset(l.delta, 0, l.outputs * l.batch * sizeof(float));  // l.detla梯度清零
     if (!state.train) return;
 
     for (i = 0; i < l.batch * l.w*l.h*l.n; ++i) l.labels[i] = -1;  // TODO: ??这个label到底是啥?
@@ -786,6 +786,7 @@ void forward_yolo_layer(const layer l, network_state state)
 
 void backward_yolo_layer(const layer l, network_state state)
 {
+   // state.delta[i*1] += 1* l.delta[i*1]; state.delta为上一次层的误差项图
    axpy_cpu(l.batch*l.inputs, 1, l.delta, 1, state.delta, 1);
 }
 

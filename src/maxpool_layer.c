@@ -375,10 +375,10 @@ void forward_maxpool_layer(const maxpool_layer l, network_state state)
     }
 }
 
-/*
+/**
 ** 最大池化层反向传播传播函数
-** 输入:  l     当前最大池化层
-**       net    整个网络
+** 输入:  l      当前最大池化层
+**       state  状态结果
 ** 说明: 这个函数看上去很简单,比起backward_convolutional_layer()少了很多,这都是有原因的.
 **      实际上,在darknet中,不管是什么层, 其反向传播函数都会先后做两件事:
 **      1). 计算当前层的敏感度图l.delta、权重更新值以及偏置更新值;
@@ -410,7 +410,7 @@ void backward_maxpool_layer(const maxpool_layer l, network_state state) {
     // ========================================================================
     // #pragma omp parallel for是OpenMP中的一个指令, 表示接下来的for循环将被多线程执行,
     // 另外每次循环之间不能有关系.
-#pragma omp parallel for
+    #pragma omp parallel for
     for (i = 0; i < h * w * c * l.batch; ++i) {
         // 遍历的基准是以当前层的输出元素为基准的,l.indexes记录了当前层每一个输出元素与上一层
         // 哪一个输出元素有真正联系(也即上一层对应池化核区域中最大值元素的索引),所以index是上
@@ -423,7 +423,10 @@ void backward_maxpool_layer(const maxpool_layer l, network_state state) {
         // 直接对应于输出特征图的索引, 因此, 在backword_maxpool_layer()函数中, 就可以直接从
         // 对应的out_index中取出对应的max_i.
         int index = l.indexes[i];  // l.indexes里面记录着maxpool层的输出特征图中每一个位置与之关联在输入特征层中的位置索引.
-        state.delta[index] += l.delta[i];  //TODO: 这里使用+= 应该主要考虑当stride<kernel_w时有重叠的情况? 后期仔细分析.
+        // 因为darknet框架是将大batchsize分解成多个minibatch, 实际每次forward()操作只有minibatch张图片.
+        // 为了达到minibatch训练, batchsize反向传播效果, 框架作者就是用误差累计策略.也即每次minibatch图片
+        // forward()后, 各层的误差项δ并不清零处理, 而是进行累加操作. 权重参数又需要根据δ来计算。
+        state.delta[index] += l.delta[i];
     }
 
     /*debug

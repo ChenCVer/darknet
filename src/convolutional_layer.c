@@ -1819,9 +1819,15 @@ void backward_convolutional_layer(convolutional_layer l, network_state state)
                 // backward_convolutional_layer()才完成：将state.delta中每个元素乘以激活函数对加权输入的导数值)。
                 // 完成gemm这一步,如col2im_cpu()中注释,是考虑了多个卷积核导致的一对多关系(上一层的一个输出元素
                 // 会流入到下一层多个输出元素中),接下来调用col2im_cpu()则是考虑卷积核重叠(步长较小)导致的一对多关系。
+                // gemm函数实现: c = ALPHA * A * B + BETA * c;
+                // TODO: 这里需要注意的问题: maxpool, shortcut, upsample, yolo层等在进行误差项传播的时候,
+                //  都是实现累计误差传递, 也就是: += 操作, 但是在这里gemm矩阵操作的时候, 竟然传递的BETA系数为0.
+                //  也就是说, gemm求解出来的c并不是累计误差, 只是当前迭代误差项δ. 其实这个累加操作, darknet的实现
+                //  放在了col2im_cpu_ext()函数中进行, 代码有如下操作:
+                //  state.delta[input_row * width + input_col] += *(state.workspace)
                 gemm(1, 0, n, k, m, 1, a, n, b, k, 0, c, k);
-                // 对c也即state.workspace进行重排,得到的结果存储在state.delta中,每次循环只会处理一张输入图片,因此,
-                // 此处只会得到一张输入图产生的敏感图(注意state.delta的移位),整个循环结束后,state.delta的总尺寸为
+                // 对c也即state.workspace进行重排(同时累加),得到的结果存储在state.delta中,每次循环只会处理一张输入图片,
+                // 因此, 此处只会得到一张输入图产生的敏感图(注意state.delta的移位),整个循环结束后,state.delta的总尺寸为
                 // l.batch * l.h * l.w * l.c,这就是上一层网络整个batch的敏感度图,可视为有l.batch行,l.h*l.w*l.c列,
                 // 每行存储了一张输入图片所有输出特征图的敏感度.
                 // col2im_cpu()函数中会调用col2im_add_pixel()函数,该函数中使用了+=运算符,也即该函数要求输入的state.delta的

@@ -190,7 +190,8 @@ void shortcut_multilayer_cpu(int size, int src_outputs, int batch, int n, int *o
 }
 
 void backward_shortcut_multilayer_cpu(int size, int src_outputs, int batch, int n, int *outputs_of_layers,
-    float **layers_delta, float *delta_out, float *delta_in, float *weights, float *weight_updates, int nweights, float *in, float **layers_output, WEIGHTS_NORMALIZATION_T weights_normalization)
+    float **layers_delta, float *delta_out, float *delta_in, float *weights, float *weight_updates, int nweights,
+    float *in, float **layers_output, WEIGHTS_NORMALIZATION_T weights_normalization)
 {
     // nweights - l.n or l.n*l.c or (l.n*l.c*l.h*l.w)
     const int layer_step = nweights / (n + 1);    // 1 or l.c or (l.c * l.h * l.w)
@@ -199,11 +200,11 @@ void backward_shortcut_multilayer_cpu(int size, int src_outputs, int batch, int 
 
     int id;
     #pragma omp parallel for
-    for (id = 0; id < size; ++id) {
+    for (id = 0; id < size; ++id) {  // size是shortcut总的输出尺寸大小
         int src_id = id;
         int src_i = src_id % src_outputs;
-        src_id /= src_outputs;
-        int src_b = src_id;
+        src_id /= src_outputs;  // src_id相当于获取第l.batch-1中src_outputs的id
+        int src_b = src_id;     // 猜测src_b也即: src_batch_id
 
         float grad = 1, sum = 1, max_val = -FLT_MAX;;
         int i;
@@ -246,14 +247,14 @@ void backward_shortcut_multilayer_cpu(int size, int src_outputs, int batch, int 
         }
         else delta_out[id] += delta_in[id];
 
-        // layers
+        // layers, 遍历每个短接的层, 这里相当于: 对每个短接的层进行遍历, 然后对应位置相加即为shortcut层输出结果.
         for (i = 0; i < n; ++i) {
-            int add_outputs = outputs_of_layers[i];
-            if (src_i < add_outputs) {
-                int add_index = add_outputs*src_b + src_i;
+            int add_outputs = outputs_of_layers[i];  // 获取shortcut层的每个短接的层的输出大小.
+            if (src_i < add_outputs) {               // 一般情况下: src_i < add_outputs
+                int add_index = add_outputs*src_b + src_i;  // add_index表示第src_b个shortcut输出层中的第i个位置.
                 int out_index = id;
 
-                float *layer_delta = layers_delta[i];
+                float *layer_delta = layers_delta[i];  // 获取shortcut层短接的层对应的l.detla误差项.
                 if (weights) {
                     float *add = layers_output[i];
 
@@ -265,7 +266,7 @@ void backward_shortcut_multilayer_cpu(int size, int src_outputs, int batch, int 
                     layer_delta[add_index] += delta_in[id] * w; // [0 or c or (c, h ,w)]
                     weight_updates[weights_index] += delta_in[id] * add[add_index] * grad;
                 }
-                else layer_delta[add_index] += delta_in[id];
+                else layer_delta[add_index] += delta_in[id];  // 误差项累计
             }
         }
     }
@@ -630,7 +631,7 @@ void softmax_cpu(float *input, int n, int batch, int batch_offset, int groups,
 }
 
 void upsample_cpu(float *in, int w, int h, int c, int batch, int stride, int forward, float scale, float *out)
-{
+{   // 反向传播的时候, float *in即为state.delta, 表示当前层的上一层的误差项, 是需要求的. float *out当前层误差项.
     int i, j, k, b;
     for (b = 0; b < batch; ++b) {
         for (k = 0; k < c; ++k) {
@@ -638,8 +639,10 @@ void upsample_cpu(float *in, int w, int h, int c, int batch, int stride, int for
                 for (i = 0; i < w*stride; ++i) {
                     int in_index = b*w*h*c + k*w*h + (j / stride)*w + i / stride;
                     int out_index = b*w*h*c*stride*stride + k*w*h*stride*stride + j*w*stride + i;
-                    if (forward) out[out_index] = scale*in[in_index];
-                    else in[in_index] += scale*out[out_index];
+                    if (forward)
+                        out[out_index] = scale*in[in_index];
+                    else
+                        in[in_index] += scale*out[out_index];  // 使用+=, 进行累计误差!
                 }
             }
         }

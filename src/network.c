@@ -358,7 +358,7 @@ void backward_network(network net, network_state state)
     float *original_input = state.input;
     float *original_delta = state.delta;
     state.workspace = net.workspace;
-    for(i = net.n-1; i >= 0; --i){
+    for(i = net.n-1; i >= 0; --i){  // n-1~0, 总共107层.
         state.index = i;  // 标志参数, 当前网络的活跃层 
         // i = 0时,也即已经到了网络的第1层(或者说第0层),就是直接与输入层相连的第一层隐含层
         // (注意不是输入层,我理解的输入层就是指输入的图像数据,严格来说,输入层不算一层网络,因为输入层没有训练
@@ -397,12 +397,12 @@ float train_network_datum(network net, float *x, float *y)
 #ifdef GPU
     if(gpu_index >= 0) return train_network_datum_gpu(net, x, y);
 #endif
-    network_state state={0};  // 用network_state结构体记录网络需要输入和其他状态信息
+    network_state state={0};  // 用network_state结构体记录网络训练过程中forward()和backbard()需要的信息.
     *net.seen += net.batch;  // 更新目前已经处理的图片数量: 每次处理一个batch, 故直接添加l.batch
-    state.index = 0;
+    state.index = 0;  // 用于记录网络层编号
     state.net = net;  // 记录下当前的网络状态
     state.input = x;  // x中仍然包含batch张图片: batch * h * w * c
-    state.delta = 0;
+    state.delta = 0;  // 用于保存反向传播的梯度
     state.truth = y;  // ground_truth
     state.train = 1;  // 标记处于训练阶段
     forward_network(net, state);   // 前向传播
@@ -461,9 +461,14 @@ float train_network_waitkey(network net, data d, int wait_key)
     int n = d.X.rows / batch;  // n = net.subvisions
     float* X = (float*)xcalloc(batch * d.X.cols, sizeof(float));  // d.X.cols = h*w*c
     float* y = (float*)xcalloc(batch * d.y.cols, sizeof(float));
-
     int i;
     float sum = 0;
+    /**
+    * 因为darknet框架是将大batchsize分解成多个minibatch, 实际每次forward()操作只有minibatch张图片.
+    * 为了达到minibatch训练, batchsize反向传播效果, 框架作者就是用误差累计策略.也即每次minibatch图片
+    * forward()后, 各层的误差项δ并不清零处理, 而是进行累加操作. 权重参数又需要根据δ来计算. 通过n次forward()
+    * 和backward()操作后, 得到各层的权重梯度(比如: ∂E/∂w), 最后在update_network(net)中统一更新权重.
+    * */
     for(i = 0; i < n; ++i){
         // 从d中读取batch张图片到net.input中,进行训练:
         // 第一个参数d包含了net.batch*net.subdivision张图片的数据,第二个参数batch即为每次循环
