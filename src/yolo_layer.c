@@ -257,10 +257,11 @@ void averages_yolo_deltas(int class_index, int box_index, int stride, int classe
 
     int classes_in_one_box = 0;
     int c;
+    //在一个box里面bbox有多少个类别
     for (c = 0; c < classes; ++c) {
         if (delta[class_index + stride*c] > 0) classes_in_one_box++;
     }
-
+    //这是边界框的梯度除以box中的物体类别数
     if (classes_in_one_box > 0) {
         delta[box_index + 0 * stride] /= classes_in_one_box;
         delta[box_index + 1 * stride] /= classes_in_one_box;
@@ -330,6 +331,50 @@ int compare_yolo_class(float *output, int classes, int class_index, int stride, 
     return 0;
 }
 
+/**
+ * @brief 计算某个矩形框中某个参数在l.output中的索引。一个矩形框包含了x,y,w,h,c,C1,C2...,Cn信息,
+ *        前四个用于定位,第五个为矩形框含有物体的置信度信息c,即矩形框中存在物体的概率为多大,而C1到Cn
+ *        为矩形框中所包含的物体分别属于这n类物体的概率。本函数负责获取该矩形框首个定位信息也即x值在
+ *        l.output中索引、获取该矩形框置信度信息c在l.output中的索引、获取该矩形框分类所属概率的首个
+ *        概率也即C1值的索引,具体是获取矩形框哪个参数的索引,取决于输入参数entry的值,由于l.output的
+ *        存储方式,当entry=0时,就是获取矩形框x参数在l.output中的索引;当entry=4时,就是获取矩形框
+ *        置信度信息c在l.output中的索引;当entry=5时,就是获取矩形框首个所属概率C1在l.output中的索引.
+ * @param l: 当前yolo层
+ * @param batch: 当前照片是整个batch中的第几张,因为l.output中包含整个batch的输出,所以要定位某张训练图片
+ *               输出的众多网格中的某个矩形框,当然需要该参数.
+ * @param location 这个参数,说实话,感觉像个鸡肋参数,函数中用这个参数获取n和loc的值,这个n就是表示网格中
+ *                 的第几个预测矩形框(比如每个网格预测5个矩形框,那么n取值范围就是从0~4,loc就是某个
+ *                 该预测框位于cell中的(j, i)位置.
+ * @param entry 切入点偏移系数(通道偏移), entry每增加1, 相当于偏移一个特征图.
+ * @details l.output中存储了整个batch的训练输出,每张训练图片都会输出l.out_w*l.out_h个网格,每个网格会预测l.n
+ *          个矩形框,每个矩形框含有l.classes+l.coords+1个参数,而最后一层的输出通道数为l.n*(l.classes+l.coords+1)
+ *          ,可以想象下最终输出的三维张量是个什么样子的。展成一维数组存储时,l.output可以首先分成batch个大段,每个大段存
+ *          储了一张训练图片的所有输出;进一步细分,取其中第一大段分析,该大段中存储了第一张训练图片所有输出网格预测的矩形框信
+ *          息,每个网格预测了l.n个矩形框,存储时,l.n个矩形框是分开存储的,也就是先存储所有网格中的第一个矩形框,而后存储所
+ *          有网格中的第二个矩形框,依次类推,如果每个网格中预测5个矩形框,则可以继续把这一大段分成5个中段。继续细分,5个中段
+ *          中取第一个中段来分析,这个中段中按行(有l.out_w*l.out_h个网格,按行存储)依次存储了这张训练图片所有输出网格中
+ *          的第一个矩形框信息,要注意的是,这个中段存储的顺序并不是挨个挨个存储每个矩形框的所有信息,而是先存储所有矩形框的x,
+ *          而后是所有的y,然后是所有的w,再是h,c,最后的的概率数组也是拆分进行存储,并不是一下子存储完一个矩形框所有类的概率,
+ *          而是先存储所有网格所属第一类的概率,再存储所属第二类的概率,具体来说这一中段首先存储了l.out_w*l.out_h个x,然后
+ *          是l.out_w*l.out_c个y,依次下去,最后是l.out_w*l.out_h个C1(属于第一类的概率,用C1表示,下面类似),
+ *          l.out_w*l.outh个C2,...,l.out_w*l.out_c*Cn(假设共有n类),所以可以继续将中段分成几个小段,依次为x,y,w,h,c,
+ *          C1,C2,...Cn小段,每小段的长度都为l.out_w*l.out_c.现在回过来看本函数的输入参数,batch就是大段的偏移数(从第几个
+ *          大段开始,对应是第几张训练图片),由location计算得到的n就是中段的偏移数(从第几个中段开始,对应是第几个矩形框),
+ *          entry就是小段的偏移数(从几个小段开始,对应具体是那种参数,x,c还是C1, 也就是通道偏移),而loc则是最后的定位(cell位置),
+ *          前面确定好第几大段中的第几中段中的第几小段的首地址,loc就是从该首地址往后数loc个元素,得到最终定位
+ *          某个具体参数(x或c或C1)的索引值,比如l.output中存储的数据如下所示(这里假设只存了一张训练图片的输出,
+ *          因此batch只能为0;并假设l.out_w=l.out_h=2,l.classes=2)：
+ *          xxxxyyyywwwwhhhhccccC1C1C1C1C2C2C2C2-#-xxxxyyyywwwwhhhhccccC1C1C1C1C2C2C2C2,
+ *          n=0则定位到-#-左边的首地址(表示每个网格预测的第一个矩形框),n=1则定位到-#-右边的首地址(表示每个网格预测的第二个矩形框)
+ *          entry=0,loc=0获取的是x的索引,且获取的是第一个x也即l.out_w*l.out_h个网格中第一个网格中第一个矩形框x参数的索引;
+ *          entry=4,loc=1获取的是c的索引,且获取的是第二个c也即l.out_w*l.out_h个网格中第二个网格中第一个矩形框c参数的索引;
+ *          entry=5,loc=2获取的是C1的索引,且获取的是第三个C1也即l.out_w*l.out_h个网格中第三个网格中第一个矩形框C1参数的索引;
+ *          如果要获取第一个网格中第一个矩形框w参数的索引呢？如果已经获取了其x值的索引,显然用x的索引加上3*l.out_w*l.out_h即可获取到,
+ *          这正是delta_region_box()函数的做法;
+ *          如果要获取第三个网格中第一个矩形框C2参数的索引呢？如果已经获取了其C1值的索引,显然用C1的索引加上l.out_w*l.out_h即可获取到,
+ *          这正是delta_region_class()函数中的做法;
+ *          由上可知,entry=0时,即偏移0个小段,是获取x的索引;entry=4,是获取自信度信息c的索引;entry=5,是获取C1的索引.
+ */
 static int entry_index(layer l, int batch, int location, int entry)
 {   // location = n*l.w*l.h, 这个entry为特征图的id(第几张特征图)
     // 前4张特征图分别表示xywh.
@@ -338,6 +383,7 @@ static int entry_index(layer l, int batch, int location, int entry)
     // 第batch张图的第n个anchor中第enrty张特征图上的第loc个格子.
     return batch*l.outputs + n*l.w*l.h*(4+l.classes+1) + entry*l.w*l.h + loc;
 }
+
 
 void forward_yolo_layer(const layer l, network_state state)
 {   // l.outputs = h*w*num_anchors*(num_classes+xywh+c)
@@ -355,7 +401,8 @@ void forward_yolo_layer(const layer l, network_state state)
             // 中对于entry传入参数的是0, 也即第0个特征层上.
             int index = entry_index(l, b, n*l.w*l.h, 0);
             // 对预测框的的x和y进行sigmoid()操作,从这里可以看出anchor所有预测值在l.output上内存分布:
-            // 假如:l.w=l.h=2,l.classes=2,则有: [xxxxyyyywwwwhhhhccccc1c1c1c1c2c2c2c2]
+            // 假如: l.w=l.h=2,l.classes=2,则有: [xxxxyyyywwwwhhhhcccc1c1c1c1c2c2c2c2]
+            // 其中: xxxx表示第n个预测框分别在第1/2/3/4个网格中的预测量x.
             activate_array(l.output + index, 2 * l.w*l.h, LOGISTIC);
             // TODO: ??(l.output + index)[N*1] = (l.output + index)[N*1] * l.scale_x_y -0.5*(l.scale_x_y - 1),
             //  这个l.scale_x_y起什么作用呢?
@@ -445,7 +492,9 @@ void forward_yolo_layer(const layer l, network_state state)
                     avg_anyobj += l.output[obj_index];
                     // 与yolov1 v2相似,初始时将pred bbox都当做noobject, 计算其confidence梯度, 不过这里多了一个平衡系数
                     l.delta[obj_index] = l.cls_normalizer * (0 - l.output[obj_index]);
-                    // best_match_iou大于阈值则说明pred_box有物体, 在yolov3中正样本阈值ignore_thresh=.5
+                    // best_match_iou大于阈值则说明pred_box有物体, 在yolov3中阈值ignore_thresh=.5
+                    // 这里需要注意一个事情, best_match_iou > l.ignore_thresh,可知,该pred_bbox不一定是正样本
+                    // 暂时把他当做了忽略样本看待.
                     if (best_match_iou > l.ignore_thresh) {
                         // TODO: 这个l.objectness_smooth不理解作者想干什么?
                         if (l.objectness_smooth) {
@@ -453,7 +502,7 @@ void forward_yolo_layer(const layer l, network_state state)
                             if (delta_obj > l.delta[obj_index])
                                 l.delta[obj_index] = delta_obj;
                         }
-                        // 如果该pred_bbox是正样本, 则l.delta[obl_index]位置需要清零处理.
+                        // l.delta[obl_index]位置需要清零处理.
                         else l.delta[obj_index] = 0;
                     }
                     else if (state.net.adversarial) {  // TODO: state.net.adversarial这个不知道是什么?
@@ -488,7 +537,8 @@ void forward_yolo_layer(const layer l, network_state state)
                         // 作者尝试Faster-RCNN中提到的双IOU策略, 当Anchor与GT的IoU大于0.7时,
                         // 该Anchor被算作正样本计入损失中,但训练过程中并没有产生好的结果,所以最后放弃了.
                         // 如果要模仿faster rcnn, 这里要将l.truth_thresh改成0.7即可.
-                        const float iou_multiplier = best_iou*best_iou;// (best_iou - l.truth_thresh) / (1.0 - l.truth_thresh);
+                        // Note: 这里是每一个anchor与所有gt进行匹配, 基于IOU最大原则, 找到每个anchor对应的最佳gt.
+                        const float iou_multiplier = best_iou*best_iou;
                         if (l.objectness_smooth)
                             l.delta[obj_index] = l.cls_normalizer * (iou_multiplier - l.output[obj_index]);
                         else
@@ -538,7 +588,7 @@ void forward_yolo_layer(const layer l, network_state state)
             truth_shift.x = truth_shift.y = 0;
             for (n = 0; n < l.total; ++n) {  // 遍历所有的anchor, 找到与当前第t个gt的IOU最大的anchor
                 box pred = { 0 };
-                pred.w = l.biases[2 * n] / state.net.w;  // l.biases里面存的是anchor信息
+                pred.w = l.biases[2 * n] / state.net.w;  // l.biases里面存的是anchor信息,
                 pred.h = l.biases[2 * n + 1] / state.net.h;
                 float iou = box_iou(pred, truth_shift);
                 if (iou > best_iou) {
@@ -546,7 +596,7 @@ void forward_yolo_layer(const layer l, network_state state)
                     best_n = n;      // 记录对应的编号信息
                 }
             }
-            // 这里是为了验证, 对于第t个gt, 与他匹配最佳的anchor的编号, 是否是有该层的anchor预测的.
+            // 这里是为了验证, 对于第t个gt, 与他匹配最佳的anchor的编号, 是否是由该层的anchor预测的.
             int mask_n = int_index(l.mask, best_n, l.n);  // l.n即为该层anchor的个数.
             if (mask_n >= 0) {  // 如果gt匹配到了该层负责的anchor
                 int class_id = state.truth[t*l.truth_size + b*l.truths + 4];  // 获取第t个gt对应的类别信息
@@ -560,7 +610,7 @@ void forward_yolo_layer(const layer l, network_state state)
                                                l.w*l.h, l.iou_normalizer * class_multiplier,
                                                l.iou_loss, 1, l.max_delta, state.net.rewritten_bbox);
 
-                (*state.net.total_bbox)++;  // 记录所有正样本信息.
+                (*state.net.total_bbox)++;  // 记录所有正样本个数.
 
                 const int truth_in_index = t*l.truth_size + b*l.truths + 5;
                 const int track_id = state.truth[truth_in_index];
@@ -605,24 +655,27 @@ void forward_yolo_layer(const layer l, network_state state)
                 if (all_ious.iou > .75) recall75 += 1;
             }
 
-            // iou_thresh, 遍历每一个anchor
+            // iou_thresh, 遍历每一个anchor, 下面这个过程和上面一样，不过多约束了一个iou_thresh
             for (n = 0; n < l.total; ++n) {
-                int mask_n = int_index(l.mask, n, l.n);
+                int mask_n = int_index(l.mask, n, l.n);  // 通过这个限制, 只有对当前规格的特征层负责的anchor, 才有mask_n>0成立.
+                // 这里是考察当前层的anchor中, 除了与gt匹配最佳的anchor之外, 其他的anchor的情况.
                 if (mask_n >= 0 && n != best_n && l.iou_thresh < 1.0f) {
                     box pred = { 0 };
                     pred.w = l.biases[2 * n] / state.net.w;
                     pred.h = l.biases[2 * n + 1] / state.net.h;
+                    // 计算第t个gt与anchor的iou值
                     float iou = box_iou_kind(pred, truth_shift, l.iou_thresh_kind); // IOU, GIOU, MSE, DIOU, CIOU
-                    // iou, n
 
+                    // 如果第t个gt与anchor的iou大于设定值, 则该anchor也负责预测第t个gt.
                     if (iou > l.iou_thresh) {
-                        int class_id = state.truth[t*l.truth_size + b*l.truths + 4];
+                        int class_id = state.truth[t*l.truth_size + b*l.truths + 4];  // 获取gt的类别编号
                         if (l.map) class_id = l.map[class_id];
-
+                        // 获得与第t个gt匹配的anchor(非最佳)的编号index: 第b张图的第(j, i)网格位置的第mask_n个anchor
                         int box_index = entry_index(l, b, mask_n*l.w*l.h + j*l.w + i, 0);
                         const float class_multiplier = (l.classes_multipliers) ? l.classes_multipliers[class_id] : 1.0f;
+                        // 计算边界框损失
                         ious all_ious = delta_yolo_box(truth, l.output, l.biases, n, box_index, i, j, l.w, l.h, state.net.w, state.net.h, l.delta, (2 - truth.w*truth.h), l.w*l.h, l.iou_normalizer * class_multiplier, l.iou_loss, 1, l.max_delta, state.net.rewritten_bbox);
-                        (*state.net.total_bbox)++;
+                        (*state.net.total_bbox)++;  // 正样本数量+1
 
                         // range is 0 <= 1
                         tot_iou += all_ious.iou;
@@ -636,16 +689,20 @@ void forward_yolo_layer(const layer l, network_state state)
 
                         tot_ciou += all_ious.ciou;
                         tot_ciou_loss += 1 - all_ious.ciou;
-
+                        // 获取anchor对应的pred_bbox的conf值
                         int obj_index = entry_index(l, b, mask_n*l.w*l.h + j*l.w + i, 4);
-                        avg_obj += l.output[obj_index];
+                        avg_obj += l.output[obj_index];  // 记录iou值
                         if (l.objectness_smooth) {
                             float delta_obj = class_multiplier * l.cls_normalizer * (1 - l.output[obj_index]);
                             if (l.delta[obj_index] == 0) l.delta[obj_index] = delta_obj;
                         }
-                        else l.delta[obj_index] = class_multiplier * l.cls_normalizer * (1 - l.output[obj_index]);
+                        else
+                            // confidence损失
+                            l.delta[obj_index] = class_multiplier * l.cls_normalizer * (1 - l.output[obj_index]);
 
+                        // 获取类别预测值其实索引编号
                         int class_index = entry_index(l, b, mask_n*l.w*l.h + j*l.w + i, 4 + 1);
+                        // 计算分类损失
                         delta_yolo_class(l.output, l.delta, class_index, class_id, l.classes, l.w*l.h, &avg_cat, l.focal_loss, l.label_smooth_eps, l.classes_multipliers);
 
                         ++count;
@@ -657,14 +714,16 @@ void forward_yolo_layer(const layer l, network_state state)
             }
         }
 
-        // averages the deltas obtained by the function: delta_yolo_box()_accumulate
+        // 遍历每一个pred_bbox,
         for (j = 0; j < l.h; ++j) {
             for (i = 0; i < l.w; ++i) {
                 for (n = 0; n < l.n; ++n) {
+                    // 找到该anchor(cell(j,i)的第n个anchor)对应pred_bbox的预测值信息在l.output上的起始位置编号.
                     int box_index = entry_index(l, b, n*l.w*l.h + j*l.w + i, 0);
+                    // 找到该anchor(cell(j,i)的第n个anchor)对应pred_bbox的分类预测值信息在l.output上的起始位置编号.
                     int class_index = entry_index(l, b, n*l.w*l.h + j*l.w + i, 4 + 1);
-                    const int stride = l.w*l.h;
-
+                    const int stride = l.w*l.h;  //特征图的大小
+                    // 对梯度进行平均, 注意平均的梯度是边界框的梯度!
                     averages_yolo_deltas(class_index, box_index, stride, l.classes, l.delta);
                 }
             }
@@ -674,17 +733,16 @@ void forward_yolo_layer(const layer l, network_state state)
     if (count == 0) count = 1;
     if (class_count == 0) class_count = 1;
 
-    //(*l.cost) = pow(mag_array(l.delta, l.outputs * l.batch), 2);
-    //printf("Region %d Avg IOU: %f, Class: %f, Obj: %f, No Obj: %f, .5R: %f, .75R: %f,  count: %d\n", state.index, avg_iou / count, avg_cat / class_count, avg_obj / count, avg_anyobj / (l.w*l.h*l.n*l.batch), recall / count, recall75 / count, count);
-
     int stride = l.w*l.h;
-    float* no_iou_loss_delta = (float *)calloc(l.batch * l.outputs, sizeof(float));
-    memcpy(no_iou_loss_delta, l.delta, l.batch * l.outputs * sizeof(float));
+    float* no_iou_loss_delta = (float *)calloc(l.batch * l.outputs, sizeof(float));  // 计算IOU loss所需
+    memcpy(no_iou_loss_delta, l.delta, l.batch * l.outputs * sizeof(float));  // 把l.delta拷贝给no_iou_loss_delta
     for (b = 0; b < l.batch; ++b) {
         for (j = 0; j < l.h; ++j) {
             for (i = 0; i < l.w; ++i) {
                 for (n = 0; n < l.n; ++n) {
+                    // 遍历每一个pred_bbox, index为pred_bbox的预测信息在l.output上的起始位置
                     int index = entry_index(l, b, n*l.w*l.h + j*l.w + i, 0);
+                    // 对应的iou_loss_delta置位0.
                     no_iou_loss_delta[index + 0 * stride] = 0;
                     no_iou_loss_delta[index + 1 * stride] = 0;
                     no_iou_loss_delta[index + 2 * stride] = 0;
@@ -695,13 +753,14 @@ void forward_yolo_layer(const layer l, network_state state)
     }
     float classification_loss = l.cls_normalizer * pow(mag_array(no_iou_loss_delta, l.outputs * l.batch), 2);
     free(no_iou_loss_delta);
-    float loss = pow(mag_array(l.delta, l.outputs * l.batch), 2);
+
+    float loss = pow(mag_array(l.delta, l.outputs * l.batch), 2);   // default, yolov3原始损失.
     float iou_loss = loss - classification_loss;
 
     float avg_iou_loss = 0;
     // gIOU loss + MSE (objectness) loss
     if (l.iou_loss == MSE) {
-        *(l.cost) = pow(mag_array(l.delta, l.outputs * l.batch), 2);
+        *(l.cost) = pow(mag_array(l.delta, l.outputs * l.batch), 2);   // default, yolov3原始损失.
     }
     else {
         // Always compute classification loss both for iou + cls loss and for logging with mse loss
@@ -716,7 +775,7 @@ void forward_yolo_layer(const layer l, network_state state)
         *(l.cost) = avg_iou_loss + classification_loss;
     }
 
-    loss /= l.batch;
+    loss /= l.batch;  // 这个loss即为原版YOLO V3 loss.
     classification_loss /= l.batch;
     iou_loss /= l.batch;
 

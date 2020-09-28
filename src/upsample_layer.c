@@ -73,7 +73,8 @@ void forward_upsample_layer(const layer l, network_state net)
     fill_cpu(l.outputs*l.batch, 0, l.output, 1);
     if(l.reverse){
         upsample_cpu(l.output, l.out_w, l.out_h, l.c, l.batch, l.stride, 0, l.scale, net.input);
-    }else{
+    }
+    else{
         upsample_cpu(net.input, l.w, l.h, l.c, l.batch, l.stride, 1, l.scale, l.output);
     }
 }
