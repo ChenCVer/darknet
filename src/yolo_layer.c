@@ -490,7 +490,8 @@ void forward_yolo_layer(const layer l, network_state state)
                     }
                     // 通过上面的for循环, 找出了对于每个pred_bbox来说, 最佳的gt
                     avg_anyobj += l.output[obj_index];
-                    // 与yolov1 v2相似,初始时将pred bbox都当做noobject, 计算其confidence梯度, 不过这里多了一个平衡系数
+                    // 与yolov1 v2相似,初始时将pred bbox都当做noobject(负样本), 计算其confidence梯度,
+                    // 不过这里多了一个平衡系数.
                     l.delta[obj_index] = l.cls_normalizer * (0 - l.output[obj_index]);
                     // best_match_iou大于阈值则说明pred_box有物体, 在yolov3中阈值ignore_thresh=.5
                     // 这里需要注意一个事情, best_match_iou > l.ignore_thresh,可知,该pred_bbox不一定是正样本
