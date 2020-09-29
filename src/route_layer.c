@@ -112,6 +112,7 @@ void backward_route_layer(const route_layer l, network_state state)
         int part_input_size = input_size / l.groups;
         for(j = 0; j < l.batch; ++j){
             // delta = delta+ALPHA*(l.delta+offset+j*l.outputs);
+            // TODO: 这里使用“+=”操作, 也是计算累计误差项.
             axpy_cpu(part_input_size, 1, l.delta + offset + j*l.outputs, 1,
                      delta + j*input_size + part_input_size*l.group_id, 1);
         }
