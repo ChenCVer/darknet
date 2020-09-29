@@ -532,6 +532,11 @@ void forward_yolo_layer(const layer l, network_state state)
                     }
                     // 如果pred bbox为完全预测正确样本,在yolov3完全预测正确样本的阈值truth_thresh=1.
                     //这个参数在cfg文件中值为1.这个条件语句永远不可能成立
+                    // TODO: 下面这个if如果条件成立, 就很有可能出现这种情况: 加入当前正在遍历的cell(1,2)中的第2个pred_bbox,
+                    //  然后遍历图片中所有的gt, 如果这个pred_bbox对应的best_iou所对应的gt(准确说是gt中心位置)并不在该cell(1,2)
+                    //  内部, 这就打破了: 处在某个cell里面的gt只能由该cell里面的pred_bbox来负责预测了限制.
+                    //  这样就出现了一个严重的问题, 网络预测的x和y方面的偏移量是0~1之间, 也就是说, cell里面的anchor根据网络预测量
+                    //  无法将这个anchor与他负责的gt之间的差距拉近(因为这个gt在别的cell里面), 导致最后网络都可能处于无法收敛的状态.
                     if (best_iou > l.truth_thresh) {
                         // 作者在yolo v3论文中的第4节提到了这部分。
                         // 作者尝试Faster-RCNN中提到的双IOU策略, 当Anchor与GT的IoU大于0.7时,
@@ -567,6 +572,12 @@ void forward_yolo_layer(const layer l, network_state state)
             }
         }
         // 遍历每一张图片中的所有gt, 注意, 制作yolo的标签信息时候, 已经将gt的xywh等除以输入尺度了.
+        // TODO: YOLO算法一般默认一个cell里面只有一个gt, 但是如果一张图片里面gt比较多, 最后难免出现一个cell中会出现
+        //  多个gt的情况, 这样就会出现一个所谓的标签重写问题.具体来说: 假如cell(1,1)里面有两个gt, 我在遍历gt_1的时候,
+        //  anchor_2是最佳匹配, 后续接着会进行一些列分类损失和回归损失计算等, 当我遍历到gt_2(如果gt_2和gt_1的wh差不多)
+        //  的时候, 又和anchor_2匹配上了. 后面接着进行的一系列损失计算会覆盖之前gt_1的匹配结果, 也即anchor_2现在是负责
+        //  gt_2而不是gt_1了. 导致gt_1部分成了背景区域.后续yolo-poly针对此问题有相应的策略, 感兴趣请阅读:
+        //  https://www.zybuluo.com/huanghaian/note/1712318
         for (t = 0; t < l.max_boxes; ++t) {
             box truth = float_to_box_stride(state.truth + t*l.truth_size + b*l.truths, 1);  // 获取gt的xywh
             if (!truth.x) break;  // continue;
