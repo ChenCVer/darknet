@@ -686,7 +686,10 @@ void forward_yolo_layer(const layer l, network_state state)
                         int box_index = entry_index(l, b, mask_n*l.w*l.h + j*l.w + i, 0);
                         const float class_multiplier = (l.classes_multipliers) ? l.classes_multipliers[class_id] : 1.0f;
                         // 计算边界框损失
-                        ious all_ious = delta_yolo_box(truth, l.output, l.biases, n, box_index, i, j, l.w, l.h, state.net.w, state.net.h, l.delta, (2 - truth.w*truth.h), l.w*l.h, l.iou_normalizer * class_multiplier, l.iou_loss, 1, l.max_delta, state.net.rewritten_bbox);
+                        ious all_ious = delta_yolo_box(truth, l.output, l.biases, n, box_index, i, j, l.w, l.h,
+                                                       state.net.w, state.net.h, l.delta, (2 - truth.w*truth.h),
+                                                       l.w*l.h, l.iou_normalizer * class_multiplier,
+                                                       l.iou_loss, 1, l.max_delta, state.net.rewritten_bbox);
                         (*state.net.total_bbox)++;  // 正样本数量+1
 
                         // range is 0 <= 1

@@ -637,9 +637,9 @@ layer parse_gaussian_yolo(list *options, size_params params) // Gaussian_YOLOv3
     l.jitter = option_find_float(options, "jitter", .2);
     l.resize = option_find_float_quiet(options, "resize", 1.0);
 
-    l.ignore_thresh = option_find_float(options, "ignore_thresh", .5);
-    l.truth_thresh = option_find_float(options, "truth_thresh", 1);
-    l.iou_thresh = option_find_float_quiet(options, "iou_thresh", 1); // recommended to use iou_thresh=0.213 in [yolo]
+    l.ignore_thresh = option_find_float(options, "ignore_thresh", .5);  // 忽略样本阈值
+    l.truth_thresh = option_find_float(options, "truth_thresh", 1);     // 完全正确样本阈值
+    l.iou_thresh = option_find_float_quiet(options, "iou_thresh", 1);   // 正样本阈值
     l.random = option_find_float_quiet(options, "random", 0);
 
     char *map_file = option_find_str(options, "map", 0);
