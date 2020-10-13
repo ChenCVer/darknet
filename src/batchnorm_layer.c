@@ -228,7 +228,7 @@ void forward_batchnorm_layer(layer l, network_state state)
 
         // l.x[i*1] = l.output[i*1]
         copy_cpu(l.outputs*l.batch, l.output, 1, l.x, 1);
-
+        // TODO: 注意, 这里的l.mean和l.variance这两个量, 每次forward()都只是基于minibatch计算得来.
         // 对应公式: l.output = (l.output - l.mean) / (sqrt(l.variance) + ε)
         normalize_cpu(l.output, l.mean, l.variance, l.batch, l.out_c, l.out_h*l.out_w);
         //将normalize_cpu函数执行的结果保存到l.x_norm,用于反向传播时相关参数梯度的计算
