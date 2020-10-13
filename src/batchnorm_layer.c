@@ -271,8 +271,8 @@ void backward_batchnorm_layer(const layer l, network_state state)
 }
 
 void update_batchnorm_layer(layer l, int batch, float learning_rate, float momentum, float decay)
-{
-    //int size = l.nweights;
+{   // 由y=γ*x̅+β可知, BN层只涉及γ和β两个参数需要更新.
+    // int size = l.nweights;
     axpy_cpu(l.c, learning_rate / batch, l.bias_updates, 1, l.biases, 1);
     scal_cpu(l.c, momentum, l.bias_updates, 1);
 
