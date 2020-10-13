@@ -464,10 +464,16 @@ float train_network_waitkey(network net, data d, int wait_key)
     int i;
     float sum = 0;
     /**
-    * 因为darknet框架是将大batchsize分解成多个minibatch, 实际每次forward()操作只有minibatch张图片.
-    * 为了达到minibatch训练, batchsize反向传播效果, 框架作者就是用误差累计策略.也即每次minibatch图片
-    * forward()后, 各层的误差项δ并不清零处理, 而是进行累加操作. 权重参数又需要根据δ来计算. 通过n次forward()
-    * 和backward()操作后, 得到各层的权重梯度(比如: ∂E/∂w), 最后在update_network(net)中统一更新权重.
+    * 因为darknet框架是将大batchsize分解成多个minibatch,实际每次forward()操作只有minibatch张图片.
+    * 为了达到minibatch训练,batchsize反向传播效果,框架作者就是用误差累计策略.也即每次minibatch图片
+    * forward()后,各层的误差项δ并不清零处理,而是进行累加操作.权重参数又需要根据δ来计算.通过n次forward()
+    * 和backward()操作后,得到各层的累计梯度(比如: ∂L/∂w和∂L/∂b),最后在update_network(net)中统一更新权重,
+    * 需要注意的是, 假设经过batchsize/minibatch次反向传播后, 我们得到了累计的梯度:
+    * ∂L/∂w = 0(初始时刻) + ∂L_1/∂w + ∂L_2/∂w + ... + ∂L_n/∂w, 在update_network()函数中,
+    * 会首先利用∂L/∂w进行权重权重更新: w_i+1 = w_i - lr * ∂L/∂w, 随后又对∂L/∂w乘以一个momentum项.
+    * 在后续的更新中, 是继续在momentum*∂L/∂w的基础上继续进行梯度累加操作. 也即有:
+    * ∂L/∂w = momentum*∂L/∂w + (∂L_1/∂w + ∂L_2/∂w + ... + ∂L_n/∂w). 可以发现, 其在update_network()
+    * 函数中用于更新权重的∂L/∂w实际上是动量(指数滑动平均).
     * */
     for(i = 0; i < n; ++i){
         // 从d中读取batch张图片到net.input中,进行训练:
