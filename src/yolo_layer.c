@@ -582,6 +582,7 @@ void forward_yolo_layer(const layer l, network_state state)
         for (t = 0; t < l.max_boxes; ++t) {
             box truth = float_to_box_stride(state.truth + t*l.truth_size + b*l.truths, 1);  // 获取gt的xywh
             if (!truth.x) break;  // continue;
+            // printf("truth: %d, box: %f\t%f\t%f\t%f\n", t, truth.x, truth.y, truth.w, truth.h);
             if (truth.x < 0 || truth.y < 0 || truth.x > 1 || truth.y > 1 || truth.w < 0 || truth.h < 0) {
                 char buff[256];
                 printf(" Wrong label: truth.x = %f, truth.y = %f, truth.w = %f, truth.h = %f \n", truth.x, truth.y, truth.w, truth.h);
@@ -599,7 +600,7 @@ void forward_yolo_layer(const layer l, network_state state)
             box truth_shift = truth;  //将truth_shift的box位置移动到0,0, 计算iou时不考虑gt的位置.
             truth_shift.x = truth_shift.y = 0;
             for (n = 0; n < l.total; ++n) {  // 遍历所有的anchor, 找到与当前第t个gt的IOU最大的anchor
-                box pred = { 0 };
+                box pred = {0};
                 pred.w = l.biases[2 * n] / state.net.w;  // l.biases里面存的是anchor信息,
                 pred.h = l.biases[2 * n + 1] / state.net.h;
                 float iou = box_iou(pred, truth_shift);
@@ -608,8 +609,13 @@ void forward_yolo_layer(const layer l, network_state state)
                     best_n = n;      // 记录对应的编号信息
                 }
             }
+            // printf("best_n: %d\n", best_n);
+
             // 这里是为了验证, 对于第t个gt, 与他匹配最佳的anchor的编号, 是否是由该层的anchor预测的.
             int mask_n = int_index(l.mask, best_n, l.n);  // l.n即为该层anchor的个数.
+            // TODO: 通过打印输出发现, 同一个gt, 在3个预测层所匹配的最佳anchor编号best_n不会变, 也就是说
+            //  虽然YOLO v3有三个yolo层, 每次经过yolo层的时候, 每个gt都会计算一遍得出最佳匹配anchor, 但是
+            //  每个gt在三个yolo层下算出的best_n不会变.
             if (mask_n >= 0) {  // 如果gt匹配到了该层负责的anchor
                 int class_id = state.truth[t*l.truth_size + b*l.truths + 4];  // 获取第t个gt对应的类别信息
                 if (l.map) class_id = l.map[class_id];
@@ -797,6 +803,8 @@ void forward_yolo_layer(const layer l, network_state state)
     fprintf(stderr, "v3 (%s loss, Normalizer: (iou: %.2f, cls: %.2f) Region %d Avg (IOU: %f, GIOU: %f), Class: %f, Obj: %f, No Obj: %f, .5R: %f, .75R: %f, count: %d, class_loss = %f, iou_loss = %f, total_loss = %f \n",
         (l.iou_loss == MSE ? "mse" : (l.iou_loss == GIOU ? "giou" : "iou")), l.iou_normalizer, l.cls_normalizer, state.index, tot_iou / count, tot_giou / count, avg_cat / class_count, avg_obj / count, avg_anyobj / (l.w*l.h*l.n*l.batch), recall / count, recall75 / count, count,
         classification_loss, iou_loss, loss);
+
+    // printf("-----------------------------------------\n");
 }
 
 void backward_yolo_layer(const layer l, network_state state)
