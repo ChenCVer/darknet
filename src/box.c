@@ -255,6 +255,8 @@ float box_ciou(box a, box b)
     return iou - ciou_term;
 }
 
+
+// TODO: 2020-10-15: 这段代码需要以后认真分析iou, giou, diou和ciou的反向传播计算.
 dxrep dx_box_iou(box pred, box truth, IOU_LOSS iou_loss) {
     boxabs pred_tblr = to_tblr(pred);  // 这个操作是: 将xywh(这里的xy是框的中心点坐标) -> xyxy
     float pred_t = fmin(pred_tblr.top, pred_tblr.bot);     // 找出pred_bbox框的y坐标最小值

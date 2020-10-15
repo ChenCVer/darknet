@@ -179,7 +179,7 @@ ious delta_yolo_box(box truth, float *x, float *biases, int n, int index, int i,
     // avoid nan in dx_box_iou
     if (pred.w == 0) { pred.w = 1.0; }  // 避免预测框太小.
     if (pred.h == 0) { pred.h = 1.0; }
-    if (iou_loss == MSE)    // old loss
+    if (iou_loss == MSE)    // old loss, yolo v3用
     {
         float tx = (truth.x*lw - i);
         float ty = (truth.y*lh - j);
