@@ -110,10 +110,10 @@ boxabs box_c(box a, box b) {
 // representation from x, y, w, h to top, left, bottom, right
 boxabs to_tblr(box a) {
     boxabs tblr = { 0 };
-    float t = a.y - (a.h / 2);
-    float b = a.y + (a.h / 2);
-    float l = a.x - (a.w / 2);
-    float r = a.x + (a.w / 2);
+    float t = a.y - (a.h / 2);  // 框a的左上角y坐标
+    float b = a.y + (a.h / 2);  // 框a的右下角y坐标
+    float l = a.x - (a.w / 2);  // 框a的左上角x坐标
+    float r = a.x + (a.w / 2);  // 框a的右下角x坐标
     tblr.top = t;
     tblr.bot = b;
     tblr.left = l;
@@ -174,7 +174,7 @@ float box_iou(box a, box b)
 
 float box_giou(box a, box b)
 {
-    boxabs ba = box_c(a, b);
+    boxabs ba = box_c(a, b);  // ba是完全包络a和b的最小框.
     float w = ba.right - ba.left;
     float h = ba.bot - ba.top;
     float c = w*h;
@@ -194,15 +194,15 @@ float box_giou(box a, box b)
 // https://arxiv.org/abs/1911.08287
 float box_diou(box a, box b)
 {
-    boxabs ba = box_c(a, b);
+    boxabs ba = box_c(a, b);   // 计算a和b的最小包络矩形
     float w = ba.right - ba.left;
     float h = ba.bot - ba.top;
-    float c = w * w + h * h;
+    float c = w * w + h * h;  // 对角线长度的平方
     float iou = box_iou(a, b);
     if (c == 0) {
         return iou;
     }
-    float d = (a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y);
+    float d = (a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y);  // a和b矩阵中心距离与a和b左上角点的距离相等
     float u = pow(d / c, 0.6);
     float diou_term = u;
 #ifdef DEBUG_PRINTS
@@ -256,32 +256,31 @@ float box_ciou(box a, box b)
 }
 
 dxrep dx_box_iou(box pred, box truth, IOU_LOSS iou_loss) {
- boxabs pred_tblr = to_tblr(pred);
-    float pred_t = fmin(pred_tblr.top, pred_tblr.bot);
-    float pred_b = fmax(pred_tblr.top, pred_tblr.bot);
-    float pred_l = fmin(pred_tblr.left, pred_tblr.right);
-    float pred_r = fmax(pred_tblr.left, pred_tblr.right);
+    boxabs pred_tblr = to_tblr(pred);  // 这个操作是: 将xywh(这里的xy是框的中心点坐标) -> xyxy
+    float pred_t = fmin(pred_tblr.top, pred_tblr.bot);     // 找出pred_bbox框的y坐标最小值
+    float pred_b = fmax(pred_tblr.top, pred_tblr.bot);     // 找出pred_bbox框的y坐标最大值
+    float pred_l = fmin(pred_tblr.left, pred_tblr.right);  // 找出pred_bbox框的x坐标最小值
+    float pred_r = fmax(pred_tblr.left, pred_tblr.right);  // 找出pred_bbox框的x坐标最大值
     //dbox dover = derivative(pred,truth);
     //dbox diouu = diou(pred, truth);
-    boxabs truth_tblr = to_tblr(truth);
+    boxabs truth_tblr = to_tblr(truth);  // 对gt也进行同样的操作: truth_xywh -> truth_xyxy
 #ifdef DEBUG_PRINTS
     printf("\niou: %f, giou: %f\n", box_iou(pred, truth), box_giou(pred, truth));
     printf("pred: x,y,w,h: (%f, %f, %f, %f) -> t,b,l,r: (%f, %f, %f, %f)\n", pred.x, pred.y, pred.w, pred.h, pred_tblr.top, pred_tblr.bot, pred_tblr.left, pred_tblr.right);
     printf("truth: x,y,w,h: (%f, %f, %f, %f) -> t,b,l,r: (%f, %f, %f, %f)\n", truth.x, truth.y, truth.w, truth.h, truth_tblr.top, truth_tblr.bot, truth_tblr.left, truth_tblr.right);
 #endif
-    //printf("pred (t,b,l,r): (%f, %f, %f, %f)\n", pred_t, pred_b, pred_l, pred_r);
-    //printf("trut (t,b,l,r): (%f, %f, %f, %f)\n", truth_tblr.top, truth_tblr.bot, truth_tblr.left, truth_tblr.right);
+    // 看这段代码的时候记得对照paper: UnitBox: An Advanced Object Detection Network
     dxrep ddx = {0};
-    float X = (pred_b - pred_t) * (pred_r - pred_l);
-    float Xhat = (truth_tblr.bot - truth_tblr.top) * (truth_tblr.right - truth_tblr.left);
+    float X = (pred_b - pred_t) * (pred_r - pred_l);  // pred_bbox的面积
+    float Xhat = (truth_tblr.bot - truth_tblr.top) * (truth_tblr.right - truth_tblr.left);  // gt的面积, hat帽子的意思, X头上有一横
     float Ih = fmin(pred_b, truth_tblr.bot) - fmax(pred_t, truth_tblr.top);
     float Iw = fmin(pred_r, truth_tblr.right) - fmax(pred_l, truth_tblr.left);
-    float I = Iw * Ih;
-    float U = X + Xhat - I;
-    float S = (pred.x-truth.x)*(pred.x-truth.x)+(pred.y-truth.y)*(pred.y-truth.y);
+    float I = Iw * Ih;       // pred与gt之间的交集的面积
+    float U = X + Xhat - I;  // pred与gt之间的并集的面积
+    float S = (pred.x-truth.x)*(pred.x-truth.x)+(pred.y-truth.y)*(pred.y-truth.y);   // pred_bbox和gt中心点距离的平方
     float giou_Cw = fmax(pred_r, truth_tblr.right) - fmin(pred_l, truth_tblr.left);
     float giou_Ch = fmax(pred_b, truth_tblr.bot) - fmin(pred_t, truth_tblr.top);
-    float giou_C = giou_Cw * giou_Ch;
+    float giou_C = giou_Cw * giou_Ch;  // 包络pred_bbox和gt的最小框的面积
     //float IoU = I / U;
 //#ifdef DEBUG_PRINTS
     //printf("X: %f", X);
@@ -294,6 +293,8 @@ dxrep dx_box_iou(box pred, box truth, IOU_LOSS iou_loss) {
 //#endif
 
     //Partial Derivatives, derivatives
+    // DX_wrt_t: 表示X关于t的偏导数∂X/∂t, 这里X = (pred_b - pred_t) * (pred_r - pred_l)
+    // 而t也就是pred_t, 这个pred_t相当于UntiBox论文中公式(3)的x_t.
     float dX_wrt_t = -1 * (pred_r - pred_l);
     float dX_wrt_b = pred_r - pred_l;
     float dX_wrt_l = -1 * (pred_b - pred_t);
@@ -306,11 +307,12 @@ dxrep dx_box_iou(box pred, box truth, IOU_LOSS iou_loss) {
     //float dXhat_wrt_r = truth_tblr.bot - truth_tblr.top;
 
     // gradient of I min/max in IoU calc (prediction)
-    float dI_wrt_t = pred_t > truth_tblr.top ? (-1 * Iw) : 0;
+    float dI_wrt_t = pred_t > truth_tblr.top ? (-1 * Iw) : 0;  // dI_wrt_t <=> ∂I/∂pred_t <=> ∂I/∂x_t
     float dI_wrt_b = pred_b < truth_tblr.bot ? Iw : 0;
     float dI_wrt_l = pred_l > truth_tblr.left ? (-1 * Ih) : 0;
     float dI_wrt_r = pred_r < truth_tblr.right ? Ih : 0;
-    // derivative of U with regard to x
+    // derivative of U with regard to x;
+    // 因为U = X + Xhat - I, dU_wrt_t <=> ∂I/∂pred_t = (∂X/∂t - ∂I/∂t)
     float dU_wrt_t = dX_wrt_t - dI_wrt_t;
     float dU_wrt_b = dX_wrt_b - dI_wrt_b;
     float dU_wrt_l = dX_wrt_l - dI_wrt_l;
@@ -326,7 +328,7 @@ dxrep dx_box_iou(box pred, box truth, IOU_LOSS iou_loss) {
     float p_dl = 0;
     float p_dr = 0;
     if (U > 0 ) {
-      p_dt = ((U * dI_wrt_t) - (I * dU_wrt_t)) / (U * U);
+      p_dt = ((U * dI_wrt_t) - (I * dU_wrt_t)) / (U * U);  // p_dt <=> ∂(I/U)/∂x_t
       p_db = ((U * dI_wrt_b) - (I * dU_wrt_b)) / (U * U);
       p_dl = ((U * dI_wrt_l) - (I * dU_wrt_l)) / (U * U);
       p_dr = ((U * dI_wrt_r) - (I * dU_wrt_r)) / (U * U);
@@ -339,7 +341,7 @@ dxrep dx_box_iou(box pred, box truth, IOU_LOSS iou_loss) {
 
     if (iou_loss == GIOU) {
       if (giou_C > 0) {
-        // apply "C" term from gIOU
+        // apply "C" term from gIOU, ∂(U/giou_C)/∂x_t
         p_dt += ((giou_C * dU_wrt_t) - (U * dC_wrt_t)) / (giou_C * giou_C);
         p_db += ((giou_C * dU_wrt_b) - (U * dC_wrt_b)) / (giou_C * giou_C);
         p_dl += ((giou_C * dU_wrt_l) - (U * dC_wrt_l)) / (giou_C * giou_C);

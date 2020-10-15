@@ -177,7 +177,7 @@ ious delta_yolo_box(box truth, float *x, float *biases, int n, int index, int i,
     all_ious.diou = box_diou(pred, truth);   // diou
     all_ious.ciou = box_ciou(pred, truth);   // ciou
     // avoid nan in dx_box_iou
-    if (pred.w == 0) { pred.w = 1.0; }
+    if (pred.w == 0) { pred.w = 1.0; }  // 避免预测框太小.
     if (pred.h == 0) { pred.h = 1.0; }
     if (iou_loss == MSE)    // old loss
     {
@@ -242,7 +242,7 @@ ious delta_yolo_box(box truth, float *x, float *biases, int n, int index, int i,
             delta[index + 3 * stride] = 0;
         }
 
-        // accumulate delta
+        // accumulate delta(累计梯度)
         delta[index + 0 * stride] += dx;
         delta[index + 1 * stride] += dy;
         delta[index + 2 * stride] += dw;
