@@ -100,7 +100,8 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
 #ifdef GPU
         cuda_set_device(gpus[k]);
 #endif
-        // 解析网络配置文件,并初始化网络结构,
+        // 解析网络配置文件,并初始化网络结构, 解析出.cfg中各种[net],[convolutional], [yolo]等层的参数
+        // 赋值给nets[k], 经过parse_network_cfg(cfgfile)后, nets[k]所有结构和参数已经全部被赋值或初始化好.
         nets[k] = parse_network_cfg(cfgfile);
         nets[k].benchmark_layers = benchmark_layers;
         // 加载预训练模型
@@ -116,8 +117,8 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
     }
     srand(time(0));  // 再次设计随机数种子
     network net = nets[0];     // 第一块显卡上的网络
-    // visualize_network(nets[0]);
-    // 实际的batch_size等于batch和subdivisions的积
+    // visualize_network(nets[0]);  // 可视化网络.
+    // 实际的batch_size等于batch和subdivisions的积, 这里net.batch = cfg中[net]下的batch / subdivisions
     const int actual_batch_size = net.batch * net.subdivisions;
     if (actual_batch_size == 1) {
         printf("\n Error: You set incorrect value batch=1 for Training! You should set batch=64 subdivision=64 \n");
@@ -134,7 +135,7 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
     layer l = net.layers[net.n - 1];  // 获取网络的最后一层, 得出detection类型
     for (k = 0; k < net.n; ++k) {
         layer lk = net.layers[k];
-        if (lk.type == YOLO || lk.type == GAUSSIAN_YOLO || lk.type == REGION) {
+        if (lk.type == YOLO || lk.type == GAUSSIAN_YOLO || lk.type == REGION) {  // REGION主要对应yolov2
             l = lk;  // C语言枚举类型打印出来好像只能打印为%d格式, 打印的结果是当前这个元素在枚举类型的位置.
             printf(" Detection layer: %d - type = %d \n", k, l.type);
         }
@@ -146,7 +147,7 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
     int train_images_num = plist->size;     // 链表长度表示训练图片的张数
     char **paths = (char **)list_to_array(plist);  // 链表中的路径转换为字符串数组
 
-    const int init_w = net.w;
+    const int init_w = net.w;  // 初始网络输入图像尺寸
     const int init_h = net.h;
     const int init_b = net.batch;
     int iter_save, iter_save_last, iter_map;
@@ -167,11 +168,11 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
     args.flip = net.flip;
     args.jitter = l.jitter;  // 图像扰动值
     args.resize = l.resize;
-    args.num_boxes = l.max_boxes;
-    args.truth_size = l.truth_size;
+    args.num_boxes = l.max_boxes;    // 一张图片中的最大gt数
+    args.truth_size = l.truth_size;  // 图片中每个gt标签长度(xywhc), 这里是6, 但实际上应该是5,
     net.num_boxes = args.num_boxes;
-    net.train_images_num = train_images_num;
-    args.d = &buffer;
+    net.train_images_num = train_images_num;  // train_images_num即为训练集的size
+    args.d = &buffer;  // 这个buffer用来不断获取data数据信息
     args.type = DETECTION_DATA;
     args.threads = 0;    // 16 or 64, 调试时用单线程分析
     // 数组增强相关
@@ -249,7 +250,7 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
             if (dim_w < net.resize_step) dim_w = net.resize_step;  // 允许的最小输入尺寸: net.resize_step
             if (dim_h < net.resize_step) dim_h = net.resize_step;
             int dim_b = (init_b * max_dim_w * max_dim_h) / (dim_w * dim_h);
-            int new_dim_b = (int)(dim_b * 0.8);  // init_b起什么作用?
+            int new_dim_b = (int)(dim_b * 0.8);  // init_b初始化的batch=cfg.[net].batch/subdivisions
             if (new_dim_b > init_b) dim_b = new_dim_b;
 
             args.w = dim_w;  // 修改网络输入图像的分辨率
@@ -272,10 +273,10 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
             else
                 printf("\n %d x %d \n", dim_w, dim_h);
 
-            pthread_join(load_thread, 0);
+            pthread_join(load_thread, 0);  // 主线程阻塞, 等待子线程完成
             train = buffer;
             free_data(train);
-            load_thread = load_data(args);
+            load_thread = load_data(args);  // 这里又在创建线程, 加载数据?
             // 由于img_input_sizes发生改变, 因此, 对应的网络结构和参数也需要对应改变.
             for (k = 0; k < ngpus; ++k) {
                 resize_network(nets + k, dim_w, dim_h);

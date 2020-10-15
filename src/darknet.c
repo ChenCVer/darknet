@@ -458,7 +458,7 @@ int main(int argc, char **argv)
                           "detector",
                           "train",
                           "../cfg/voc.data",
-                          "../cfg/yolov3.cfg"};
+                          "../cfg/yolov4.cfg"};
     argv = parameters;
 //    *****************************************************************/
 
@@ -467,7 +467,9 @@ int main(int argc, char **argv)
 		if (!argv[i]) {
 		    continue;
 		}
-		// TODO: argv是char* []类型
+		// TODO: parameters是char* []类型, parameters中的每个参数是char*类型，也即每个指针指向
+		//  字符常量区, 因此, strip_args(argv[i])需要修改argv[i]所指向的字符常量区的内容显然不行,
+		//  因此, 指针所指向的内存空间为常量区.
         // strip_args(argv[i]);
 	}
 

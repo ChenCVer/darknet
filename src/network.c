@@ -284,12 +284,12 @@ void forward_network(network net, network_state state)
             // 第一个参数为l.delta的元素个数, 第二个参数为初始化值, 为0
             scal_cpu(l.outputs * l.batch, 0, l.delta, 1);  // l.delta[i*1] *= 0.
         }
-//        double time = get_time_point();
+        // double time = get_time_point();
         // 前向传播: 完成当前层前向推理
         l.forward(l, state);  // 函数指针, 实现多态.
         // 完成某一层的推理时, 置网络的输入为当前层的输出(这将成为下一层网络的输入), 注意此处更改的是state, 而非原始的net
-//        printf("%d - Predicted in %lf milli-seconds.\n", i, ((double)get_time_point() - time) / 1000);
-        state.input = l.output;  // l.output记录网络某一层的输出结果
+        // printf("%d - Predicted in %lf milli-seconds.\n", i, ((double)get_time_point() - time) / 1000);
+        state.input = l.output;  // l.output记录网络某一层的输出结果, 网络某一层的输出即为下一层的输入
 
         /*
         // debug:
