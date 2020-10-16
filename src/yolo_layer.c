@@ -160,10 +160,13 @@ static inline float clip_value(float val, const float max_val)
     return val;
 }
 
-ious delta_yolo_box(box truth, float *x, float *biases, int n, int index, int i, int j, int lw, int lh, int w, int h, float *delta, float scale, int stride, float iou_normalizer, IOU_LOSS iou_loss, int accumulate, float max_delta, int *rewritten_bbox)
+ious delta_yolo_box(box truth, float *x, float *biases, int n, int index, int i, int j, int lw,
+                    int lh, int w, int h, float *delta, float scale, int stride, float iou_normalizer,
+                    IOU_LOSS iou_loss, int accumulate, float max_delta, int *rewritten_bbox)
 {
-    if (delta[index + 0 * stride] || delta[index + 1 * stride] || delta[index + 2 * stride] || delta[index + 3 * stride]) {
-        (*rewritten_bbox)++;
+    if (delta[index + 0 * stride] || delta[index + 1 * stride] ||
+        delta[index + 2 * stride] || delta[index + 3 * stride]) {
+            (*rewritten_bbox)++;
     }
 
     ious all_ious = { 0 };
@@ -492,6 +495,7 @@ void forward_yolo_layer(const layer l, network_state state)
                     avg_anyobj += l.output[obj_index];
                     // 与yolov1 v2相似,初始时将pred bbox都当做noobject(负样本), 计算其confidence梯度,
                     // 不过这里多了一个平衡系数.
+                    // TODO:为什么l.delta中分类和回归损失用的是梯度, 而这里关于置信度l.delta好像没有用梯度.
                     l.delta[obj_index] = l.cls_normalizer * (0 - l.output[obj_index]);
                     // best_match_iou大于阈值则说明pred_box有物体, 在yolov3中阈值ignore_thresh=.5
                     // 这里需要注意一个事情, best_match_iou > l.ignore_thresh,可知,该pred_bbox不一定是正样本
@@ -622,7 +626,7 @@ void forward_yolo_layer(const layer l, network_state state)
                 // 获得与第t个gt匹配最佳的anchor的编号index: 第b张图的第(j, i)网格位置的第mask_n个anchor
                 int box_index = entry_index(l, b, mask_n*l.w*l.h + j*l.w + i, 0);
                 const float class_multiplier = (l.classes_multipliers) ? l.classes_multipliers[class_id] : 1.0f;
-                // 计算位置损失
+                // 计算位置损失, 边界框回归损失,支持: MSE, IOU Loss, GIOU Loss, DIOU Loss, CIOU Loss.
                 ious all_ious = delta_yolo_box(truth, l.output, l.biases, best_n, box_index, i, j, l.w, l.h,
                                                state.net.w, state.net.h, l.delta, (2 - truth.w*truth.h),
                                                l.w*l.h, l.iou_normalizer * class_multiplier,

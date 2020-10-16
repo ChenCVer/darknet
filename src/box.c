@@ -271,7 +271,8 @@ dxrep dx_box_iou(box pred, box truth, IOU_LOSS iou_loss) {
     printf("pred: x,y,w,h: (%f, %f, %f, %f) -> t,b,l,r: (%f, %f, %f, %f)\n", pred.x, pred.y, pred.w, pred.h, pred_tblr.top, pred_tblr.bot, pred_tblr.left, pred_tblr.right);
     printf("truth: x,y,w,h: (%f, %f, %f, %f) -> t,b,l,r: (%f, %f, %f, %f)\n", truth.x, truth.y, truth.w, truth.h, truth_tblr.top, truth_tblr.bot, truth_tblr.left, truth_tblr.right);
 #endif
-    // 看这段代码的时候记得对照paper: UnitBox: An Advanced Object Detection Network
+    // 看这段代码的时候记得对照paper: UnitBox: An Advanced Object Detection Network,
+    // 下面这些连续定义的float类型变量即为UnitBox中2.2节Algorithm1: IOU loss Forward伪代码中定义的变量.
     dxrep ddx = {0};
     float X = (pred_b - pred_t) * (pred_r - pred_l);  // pred_bbox的面积
     float Xhat = (truth_tblr.bot - truth_tblr.top) * (truth_tblr.right - truth_tblr.left);  // gt的面积, hat帽子的意思, X头上有一横
@@ -309,6 +310,12 @@ dxrep dx_box_iou(box pred, box truth, IOU_LOSS iou_loss) {
     //float dXhat_wrt_r = truth_tblr.bot - truth_tblr.top;
 
     // gradient of I min/max in IoU calc (prediction)
+    // I = Ih * Iw;
+    // Ih = fmin(pred_b, truth_tblr.bot) - fmax(pred_t, truth_tblr.top)
+    // Iw = fmin(pred_r, truth_tblr.right) - fmax(pred_l, truth_tblr.left)
+    // 如果有: pred_t > truth_tblr.top, 则: Ih = fmin(pred_b, truth_tblr.bot)-pred_t
+    // ∂I/∂x_t = (∂Iw/∂x_t)*Ih+(∂Ih/∂x_t)*Iw, (∂Iw/∂x_t)=0, (∂Ih/∂x_t)=-1;
+    // 因此有: ∂I/∂x_t = -1*Iw.
     float dI_wrt_t = pred_t > truth_tblr.top ? (-1 * Iw) : 0;  // dI_wrt_t <=> ∂I/∂pred_t <=> ∂I/∂x_t
     float dI_wrt_b = pred_b < truth_tblr.bot ? Iw : 0;
     float dI_wrt_l = pred_l > truth_tblr.left ? (-1 * Ih) : 0;
@@ -320,6 +327,7 @@ dxrep dx_box_iou(box pred, box truth, IOU_LOSS iou_loss) {
     float dU_wrt_l = dX_wrt_l - dI_wrt_l;
     float dU_wrt_r = dX_wrt_r - dI_wrt_r;
     // gradient of C min/max in IoU calc (prediction)
+    // dC_wrt_t的计算推理过程与dI_wrt_t推理过程类似, 这里不再详细列出.
     float dC_wrt_t = pred_t < truth_tblr.top ? (-1 * giou_Cw) : 0;
     float dC_wrt_b = pred_b > truth_tblr.bot ? giou_Cw : 0;
     float dC_wrt_l = pred_l < truth_tblr.left ? (-1 * giou_Ch) : 0;
@@ -329,13 +337,16 @@ dxrep dx_box_iou(box pred, box truth, IOU_LOSS iou_loss) {
     float p_db = 0;
     float p_dl = 0;
     float p_dr = 0;
+
     if (U > 0 ) {
-      p_dt = ((U * dI_wrt_t) - (I * dU_wrt_t)) / (U * U);  // p_dt <=> ∂(I/U)/∂x_t
+        // p_dt <=> ∂(I/U)/∂x_t <=> ∂(IOU)/∂x_t = (I'U-U'I)/(U*U)
+      p_dt = ((U * dI_wrt_t) - (I * dU_wrt_t)) / (U * U);
       p_db = ((U * dI_wrt_b) - (I * dU_wrt_b)) / (U * U);
       p_dl = ((U * dI_wrt_l) - (I * dU_wrt_l)) / (U * U);
       p_dr = ((U * dI_wrt_r) - (I * dU_wrt_r)) / (U * U);
     }
     // apply grad from prediction min/max for correct corner selection
+    // TODO: 这里几句话是不是多余?
     p_dt = pred_tblr.top < pred_tblr.bot ? p_dt : p_db;
     p_db = pred_tblr.top < pred_tblr.bot ? p_db : p_dt;
     p_dl = pred_tblr.left < pred_tblr.right ? p_dl : p_dr;
@@ -343,12 +354,22 @@ dxrep dx_box_iou(box pred, box truth, IOU_LOSS iou_loss) {
 
     if (iou_loss == GIOU) {
       if (giou_C > 0) {
-        // apply "C" term from gIOU, ∂(U/giou_C)/∂x_t
+        // apply "C" term from gIOU, 这里:
+        // ∂([C - U]/C)/∂x_t = (C*U'-U*C')/(C*C)
+        // TODO: 根据GIOU = IOU-(C-U)/C, 这里为什么是+=呢?
         p_dt += ((giou_C * dU_wrt_t) - (U * dC_wrt_t)) / (giou_C * giou_C);
         p_db += ((giou_C * dU_wrt_b) - (U * dC_wrt_b)) / (giou_C * giou_C);
         p_dl += ((giou_C * dU_wrt_l) - (U * dC_wrt_l)) / (giou_C * giou_C);
         p_dr += ((giou_C * dU_wrt_r) - (U * dC_wrt_r)) / (giou_C * giou_C);
       }
+        // GIOU = IOU - [(giou_C) - U] / giou_C
+        // 此时根据: L_Giou = 1 - GIOU
+        // ∂L_Giou/∂x_t = ∂L_Giou/∂Giou * ∂Giou/∂x_t.
+        // ∂L_Giou/∂x_t = (-1)*{[(∂IOU/∂x_t)+∂[(giou_C)-U]/∂giou_C}.
+        // 在Iw<=0||Ih<=0时, 根据下面的代码:
+        // 刚好(-1)*∂[(giou_C)-U]/∂giou_C=((giou_C*dU_wrt_t)-(U*dC_wrt_t))/(giou_C*giou_C)
+        // 所以我们知道, 在无交集的情况下: (∂IOU/∂x_t)这部分的导数为0.
+        // 从UnitBox论文中也能看到: ∂I/∂x_t = Iw, ∂I/∂x_l = Ih.
 	  if (Iw<=0||Ih<=0) {
 		p_dt = ((giou_C * dU_wrt_t) - (U * dC_wrt_t)) / (giou_C * giou_C);
         p_db = ((giou_C * dU_wrt_b) - (U * dC_wrt_b)) / (giou_C * giou_C);
@@ -357,18 +378,18 @@ dxrep dx_box_iou(box pred, box truth, IOU_LOSS iou_loss) {
 	  }
     }
 
-    float Ct = fmin(pred.y - pred.h / 2,truth.y - truth.h / 2);
-    float Cb = fmax(pred.y + pred.h / 2,truth.y + truth.h / 2);
-    float Cl = fmin(pred.x - pred.w / 2,truth.x - truth.w / 2);
-    float Cr = fmax(pred.x + pred.w / 2,truth.x + truth.w / 2);
-    float Cw = Cr - Cl;
-    float Ch = Cb - Ct;
-    float C = Cw * Cw + Ch * Ch;
+    float Ct = fmin(pred.y - pred.h / 2,truth.y - truth.h / 2);  // 找出pred和gt中最小的左上角y坐标
+    float Cb = fmax(pred.y + pred.h / 2,truth.y + truth.h / 2);  // 找出pred和gt中最大的右下角y坐标
+    float Cl = fmin(pred.x - pred.w / 2,truth.x - truth.w / 2);  // 找出pred和gt中最小的左上角x坐标
+    float Cr = fmax(pred.x + pred.w / 2,truth.x + truth.w / 2);  // 找出pred和gt中最大的右下角x坐标
+    float Cw = Cr - Cl;  // 包络pred和gt的最小矩形的宽
+    float Ch = Cb - Ct;  // 包络pred和gt的最小矩形的高
+    float C = Cw * Cw + Ch * Ch;  // 最小包络矩形的对角线的平方
 
-    float dCt_dx = 0;
-    float dCt_dy = pred_t < truth_tblr.top ? 1 : 0;
-    float dCt_dw = 0;
-    float dCt_dh = pred_t < truth_tblr.top ? -0.5 : 0;
+    float dCt_dx = 0;  // ∂Ct/∂x
+    float dCt_dy = pred_t < truth_tblr.top ? 1 : 0;     // ∂Ct/∂y
+    float dCt_dw = 0;  // ∂Ct/∂w
+    float dCt_dh = pred_t < truth_tblr.top ? -0.5 : 0;  // ∂Ct/∂h
 
     float dCb_dx = 0;
     float dCb_dy = pred_b > truth_tblr.bot ? 1 : 0;
@@ -385,7 +406,7 @@ dxrep dx_box_iou(box pred, box truth, IOU_LOSS iou_loss) {
     float dCr_dw = pred_r > truth_tblr.right ? 0.5 : 0;
     float dCr_dh = 0;
 
-    float dCw_dx = dCr_dx - dCl_dx;
+    float dCw_dx = dCr_dx - dCl_dx;  // Cw = Cr - Cl => ∂Cw/∂x = ∂Cr/∂x - ∂Cl/∂x
     float dCw_dy = dCr_dy - dCl_dy;
     float dCw_dw = dCr_dw - dCl_dw;
     float dCw_dh = dCr_dh - dCl_dh;
@@ -408,6 +429,10 @@ dxrep dx_box_iou(box pred, box truth, IOU_LOSS iou_loss) {
     float p_dw = 0;
     float p_dh = 0;
 
+    // 根据UnitBox论文中的Figure1, x坐标是与xl和xr有关, 因此: p_dx与p_dl和p_dr有关联.
+    // 论文Figure1中的xt,xb,xl,xr在代码中对应: pred_t, pred_b, pred_l, pred_r.
+    // 其中pred_l和pred_r是横坐标,与x有关, pred_t和pred_b是纵坐标, 与y有关;
+    // w = (pred_r - pred_l), h = (pred_b - pred_t);
     p_dx = p_dl + p_dr;           //p_dx, p_dy, p_dw and p_dh are the gradient of IoU or GIoU.
     p_dy = p_dt + p_db;
     p_dw = (p_dr - p_dl);         //For dw and dh, we do not divided by 2.
@@ -423,7 +448,7 @@ dxrep dx_box_iou(box pred, box truth, IOU_LOSS iou_loss) {
             p_dh += (2*Cw*dCw_dh+2*Ch*dCh_dh)*S / (C * C);
         }
 	if (Iw<=0||Ih<=0){
-            p_dx = (2*(truth.x-pred.x)*C-(2*Cw*dCw_dx+2*Ch*dCh_dx)*S) / (C * C);
+            p_dx = (2*(truth.x-pred.x)*C-(2*Cw*dCw_dx+2*Ch*dCh_dx)*S) / (C * C);  // TODO:∂Ch/∂x不是恒为0吗?
             p_dy = (2*(truth.y-pred.y)*C-(2*Cw*dCw_dy+2*Ch*dCh_dy)*S) / (C * C);
             p_dw = (2*Cw*dCw_dw+2*Ch*dCh_dw)*S / (C * C);
             p_dh = (2*Cw*dCw_dh+2*Ch*dCh_dh)*S / (C * C);
