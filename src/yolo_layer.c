@@ -495,7 +495,16 @@ void forward_yolo_layer(const layer l, network_state state)
                     avg_anyobj += l.output[obj_index];
                     // 与yolov1 v2相似,初始时将pred bbox都当做noobject(负样本), 计算其confidence梯度,
                     // 不过这里多了一个平衡系数.
-                    // TODO:为什么l.delta中分类和回归损失用的是梯度, 而这里关于置信度l.delta好像没有用梯度.
+                    // TODO: 首先l.delta[obj_index]表示的是误差项δ=∂Loss/∂net_j,这个net_j表示的是加权输入值.
+                    //  举个例子, 假如用a_l-1表示第l-1层的神经元的输出, 则有a_l-1 = f(net_l-1), 其中这个f表示的
+                    //  激活函数.进而有: 对于卷积层来说net_l = conv(w_l, a_l-1)+w_b, 具体到这个sigmoid层来说,
+                    //  a_l = sigmoid(net_l),这个a_l就是概率值p, 注意这个net_l其实就是a_l-1. 总的关系就是:
+                    //  a_l-1 --> 恒等变换y=x --> net_l --> sigmoid() --> a_l ---> bce() -->loss
+                    //  因此, 有:
+                    //  δ=∂Loss/∂net_l=(∂Loss/∂a_l)*(∂a_l/∂net_l), 置信度损失用的是二分交叉熵损失,
+                    //  参考: https://www.cnblogs.com/nowgood/p/sigmoidcrossentropy.html
+                    //  (∂Loss/∂a_l)=(p-label)/[p(1-p)], (∂a_l/∂net_l)=p(1-p)
+                    //  因此,(∂Loss/∂net_l)=p-label, 关于这里为什么要用负梯度, 还需要后续好好研究.
                     l.delta[obj_index] = l.cls_normalizer * (0 - l.output[obj_index]);
                     // best_match_iou大于阈值则说明pred_box有物体, 在yolov3中阈值ignore_thresh=.5
                     // 这里需要注意一个事情, best_match_iou > l.ignore_thresh,可知,该pred_bbox不一定是正样本

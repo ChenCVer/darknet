@@ -458,7 +458,7 @@ int main(int argc, char **argv)
                           "detector",
                           "train",
                           "../cfg/voc.data",
-                          "../cfg/yolov4-voc-giou.cfg"};
+                          "../cfg/yolov2-voc.cfg"};
     argv = parameters;
 //    *****************************************************************/
 
