@@ -287,30 +287,34 @@ void delta_yolo_class(float *output, float *delta, int index, int class_id, int 
         if(avg_cat) *avg_cat += output[index + stride*class_id];
         return;
     }
-    // Focal loss
     if (focal_loss) {
         // TODO: 这里备注下关于focal loss的计算,设定label的one-hot形式其y_k=1,
         //  我们知道的交叉熵损失定义: J=-∑y_ilog(p_i)=-log(p_k);
-        //  Focal loss: FL=-∑y_i(1-p_i)log(p_i)=-(1-p_k)log(p_k)
+        //  Focal loss: FL=-∑(y_i)*[(1-p_i)^γ]*[log(p_i)]=-[(1-p_k)^γ]*[log(p_k)]
         //  对于Loss关于p的导数:
-        //  交叉熵: ∂Loss/∂p = -1/p;
-        //  FL-loss: ∂Loss/∂p = (1-p)*(2*p*log(p)+p-1), 这里γ=2;
+        //  交叉熵: ∂FLoss/∂p = -1/p;
+        //  FL-loss: ∂FLoss/∂p = -γ*[(1-p)^(γ-1)]*log(p)-[(1-p)^γ]*(1/p);
+        //  当γ=2时, ∂FLoss/∂p = -2*(1-p)*log(p)-[(1-p)^2]*(1/p);
+        //  我们知道, p=softmax(x)情况下, ∂p/∂x_i: 当i=k时, ∂p/∂x_i=p_i(1-p_i),
+        //  当i≠k时,∂p/∂x_i=p_i*p_k,
+        //  Note: 从下面grad变量看出, ∂FLoss/∂p被乘以了一个p.也即: grad = (∂Loss/∂p)*p,
+        //  结合: ∂FLoss/∂x = (∂FLoss/∂p) * (∂p/∂x)
+        //  如果grad中的惩罚因子来自于∂p/∂x中的p_i, 则这里(∂p/∂x)就可以直接写成ce+softmax的联合反向负梯度形式: (t-p)
         float alpha = 0.5;    // 0.25 or 0.5
         //float gamma = 2;    // hardcoded in many places of the grad-formula
 
         int ti = index + stride*class_id;
         float pt = output[ti] + 0.000000000000001F;  // sigmoid函数输出结果
         // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiItKDEteCkqKDIqeCpsb2coeCkreC0xKSIsImNvbG9yIjoiIzAwMDAwMCJ9LHsidHlwZSI6MTAwMH1d
-        // ∂FL/∂p, 这个p是sigmoid的输出, p = sigmoid(x), FL = -α(1-p)^γ*log(p).
-        float grad = -(1 - pt) * (2 * pt*logf(pt) + pt - 1);    // http://blog.csdn.net/linmingan/article/details/77885832
-        //float grad = (1 - pt) * (2 * pt*logf(pt) + pt - 1);    // https://github.com/unsky/focal-loss
+        // http://blog.csdn.net/linmingan/article/details/77885832
+        float grad = -(1 - pt) * (2 * pt*logf(pt) + pt - 1);  // (∂FLoss/∂p) x p
+        // https://github.com/unsky/focal-loss
+        // float grad = (1 - pt) * (2 * pt*logf(pt) + pt - 1);
 
         for (n = 0; n < classes; ++n) {
-            //  https://blog.csdn.net/linmingan/article/details/77885832
-            // TODO: 这里由于forward采用的是sigmoid形式, 下面这个：
-            //  (((n == class_id) ? 1 : 0) - output[index + stride*n])
-            //  是ce+sigmoid的梯度, 而∂Loss/∂p已经是交叉熵形式的FL梯度了, 这里怎么还乘ce+sigmoid的梯度?
-            //  不是只需要乘上sigmoid自身的梯度就行了吗?
+            // TODO: darknet为了代码统一, 这里都统一写成了ce+softmax的backward()形式,
+            //  实际上, 如果按部就班写的话: grad只是(∂FLoss/∂p), 下面这句delta[index + stride*n]为softmax()的反向传播数值
+            //  但是事实是grad被乘以一个p后, 这样delta[index + stride*n]直接就跟ce+softmax的形式一模一样,搞得人摸不着头脑.
             delta[index + stride*n] = (((n == class_id) ? 1 : 0) - output[index + stride*n]);
             delta[index + stride*n] *= alpha*grad;
 
@@ -516,6 +520,7 @@ void forward_yolo_layer(const layer l, network_state state)
                     //  参考: https://www.cnblogs.com/nowgood/p/sigmoidcrossentropy.html
                     //  (∂Loss/∂a_l)=(p-label)/[p(1-p)], (∂a_l/∂net_l)=p(1-p)
                     //  因此,(∂Loss/∂net_l)=p-label, darknet统一采用的负梯度, +=形式.也即 +(-grandient).
+                    //  因为label始终是0, 因此这里是: (0 - l.output[obj_index])
                     l.delta[obj_index] = l.cls_normalizer * (0 - l.output[obj_index]);
                     // best_match_iou大于阈值则说明pred_box有物体, 在yolov3中阈值ignore_thresh=.5
                     // 这里需要注意一个事情, best_match_iou > l.ignore_thresh,可知,该pred_bbox不一定是正样本
