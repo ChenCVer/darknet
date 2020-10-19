@@ -294,14 +294,17 @@ void delta_yolo_class(float *output, float *delta, int index, int class_id, int 
         //float gamma = 2;    // hardcoded in many places of the grad-formula
 
         int ti = index + stride*class_id;
-        float pt = output[ti] + 0.000000000000001F;
+        float pt = output[ti] + 0.000000000000001F;  // sigmoid函数输出结果
         // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiItKDEteCkqKDIqeCpsb2coeCkreC0xKSIsImNvbG9yIjoiIzAwMDAwMCJ9LHsidHlwZSI6MTAwMH1d
+        // ∂FL/∂p, 这个p是sigmoid的输出, p = sigmoid(x), FL = -α(1-p)^γ*log(p).
         float grad = -(1 - pt) * (2 * pt*logf(pt) + pt - 1);    // http://blog.csdn.net/linmingan/article/details/77885832
         //float grad = (1 - pt) * (2 * pt*logf(pt) + pt - 1);    // https://github.com/unsky/focal-loss
 
         for (n = 0; n < classes; ++n) {
+            // TODO: 这里有点不太懂, 具体请看:
+            //  https://blog.csdn.net/linmingan/article/details/77885832
+            //  预测输出是以sigmoid函数进行输出, 这里求反向传播怎么是以softmax()形式计算?
             delta[index + stride*n] = (((n == class_id) ? 1 : 0) - output[index + stride*n]);
-
             delta[index + stride*n] *= alpha*grad;
 
             if (n == class_id && avg_cat) *avg_cat += output[index + stride*n];
@@ -311,7 +314,8 @@ void delta_yolo_class(float *output, float *delta, int index, int class_id, int 
         // default
         for (n = 0; n < classes; ++n) {
             float y_true = ((n == class_id) ? 1 : 0);
-            if (label_smooth_eps) y_true = y_true *  (1 - label_smooth_eps) + 0.5*label_smooth_eps;
+            if (label_smooth_eps)
+                y_true = y_true * (1 - label_smooth_eps) + 0.5 * label_smooth_eps;
             float result_delta = y_true - output[index + stride*n];  // 分类损失梯度.这里是交叉熵损失梯度
             if (!isnan(result_delta) && !isinf(result_delta)) delta[index + stride*n] = result_delta;
 
@@ -504,7 +508,7 @@ void forward_yolo_layer(const layer l, network_state state)
                     //  δ=∂Loss/∂net_l=(∂Loss/∂a_l)*(∂a_l/∂net_l), 置信度损失用的是二分交叉熵损失,
                     //  参考: https://www.cnblogs.com/nowgood/p/sigmoidcrossentropy.html
                     //  (∂Loss/∂a_l)=(p-label)/[p(1-p)], (∂a_l/∂net_l)=p(1-p)
-                    //  因此,(∂Loss/∂net_l)=p-label, 关于这里为什么要用负梯度, 还需要后续好好研究.
+                    //  因此,(∂Loss/∂net_l)=p-label, darknet统一采用的负梯度, +=形式.也即 +(-grandient).
                     l.delta[obj_index] = l.cls_normalizer * (0 - l.output[obj_index]);
                     // best_match_iou大于阈值则说明pred_box有物体, 在yolov3中阈值ignore_thresh=.5
                     // 这里需要注意一个事情, best_match_iou > l.ignore_thresh,可知,该pred_bbox不一定是正样本
@@ -546,7 +550,7 @@ void forward_yolo_layer(const layer l, network_state state)
                     }
                     // 如果pred bbox为完全预测正确样本,在yolov3完全预测正确样本的阈值truth_thresh=1.
                     //这个参数在cfg文件中值为1.这个条件语句永远不可能成立
-                    // TODO: 下面这个if如果条件成立, 就很有可能出现这种情况: 加入当前正在遍历的cell(1,2)中的第2个pred_bbox,
+                    // TODO: 下面这个if如果条件成立, 就很有可能出现这种情况: 假如当前正在遍历的cell(1,2)中的第2个pred_bbox,
                     //  然后遍历图片中所有的gt, 如果这个pred_bbox对应的best_iou所对应的gt(准确说是gt中心位置)并不在该cell(1,2)
                     //  内部, 这就打破了: 处在某个cell里面的gt只能由该cell里面的pred_bbox来负责预测了限制.
                     //  这样就出现了一个严重的问题, 网络预测的x和y方面的偏移量是0~1之间, 也就是说, cell里面的anchor根据网络预测量

@@ -177,6 +177,7 @@ void delta_region_class(float *output, float *delta, int index, int class_id, in
                 // delta[index + n]记录着类别损失对应的梯度信息.
                 // 基于softmax计算交叉熵损失,其梯度表示为: t - p;
                 // 其中target和pred均为one-hot编码形式.output[index + n]即为该pred_bbox预测为某一类物体的概率值.
+                // https://blog.csdn.net/jasonleesjtu/article/details/89426465
                 delta[index + n] = scale * (((n == class_id) ? 1 : 0) - output[index + n]);
                 if (n == class_id) *avg_cat += output[index + n];
             }
