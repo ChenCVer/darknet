@@ -289,7 +289,12 @@ void delta_yolo_class(float *output, float *delta, int index, int class_id, int 
     }
     // Focal loss
     if (focal_loss) {
-        // Focal Loss
+        // TODO: 这里备注下关于focal loss的计算,设定label的one-hot形式其y_k=1,
+        //  我们知道的交叉熵损失定义: J=-∑y_ilog(p_i)=-log(p_k);
+        //  Focal loss: FL=-∑y_i(1-p_i)log(p_i)=-(1-p_k)log(p_k)
+        //  对于Loss关于p的导数:
+        //  交叉熵: ∂Loss/∂p = -1/p;
+        //  FL-loss: ∂Loss/∂p = (1-p)*(2*p*log(p)+p-1), 这里γ=2;
         float alpha = 0.5;    // 0.25 or 0.5
         //float gamma = 2;    // hardcoded in many places of the grad-formula
 
@@ -301,9 +306,11 @@ void delta_yolo_class(float *output, float *delta, int index, int class_id, int 
         //float grad = (1 - pt) * (2 * pt*logf(pt) + pt - 1);    // https://github.com/unsky/focal-loss
 
         for (n = 0; n < classes; ++n) {
-            // TODO: 这里有点不太懂, 具体请看:
             //  https://blog.csdn.net/linmingan/article/details/77885832
-            //  预测输出是以sigmoid函数进行输出, 这里求反向传播怎么是以softmax()形式计算?
+            // TODO: 这里由于forward采用的是sigmoid形式, 下面这个：
+            //  (((n == class_id) ? 1 : 0) - output[index + stride*n])
+            //  是ce+sigmoid的梯度, 而∂Loss/∂p已经是交叉熵形式的FL梯度了, 这里怎么还乘ce+sigmoid的梯度?
+            //  不是只需要乘上sigmoid自身的梯度就行了吗?
             delta[index + stride*n] = (((n == class_id) ? 1 : 0) - output[index + stride*n]);
             delta[index + stride*n] *= alpha*grad;
 
