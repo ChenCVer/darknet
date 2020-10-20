@@ -193,7 +193,7 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
 #ifdef OPENCV
     //int num_threads = get_num_threads();
     //if(num_threads > 2) args.threads = get_num_threads() - 2;
-    args.threads = 1 * ngpus;   // 3 for - Amazon EC2 Tesla V100: p3.2xlarge (8 logical cores) - p3.16xlarge
+    args.threads = 0 * ngpus;   // 3 for - Amazon EC2 Tesla V100: p3.2xlarge (8 logical cores) - p3.16xlarge
     //args.threads = 12 * ngpus;    // Ryzen 7 2700X (16 logical cores)
     mat_cv* img = NULL;
     float max_img_loss = net.max_chart_loss;
@@ -213,15 +213,16 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
         printf("\n Tracking! batch = %d, subdiv = %d, time_steps = %d, mini_batch = %d \n",
                net.batch, net.subdivisions, net.time_steps, args.mini_batch);
     }
-    //printf(" imgs = %d \n", imgs);
     // *****重点掌握darknet的数据加载机制*****
-    // load_data()函数调用流程如下:
-    // load_data(args)->load_threads()->load_data_in_threads()->load_thread()->load_data_detection()
-    // 前四个函数都是在对线程的调用进行封装, 最底层的数据加载任务由load_data_detection()函数完成.
-    // 所有的数据(图片数据和标注信息数据)加载完成之后再拼接到一个大的数组中, 在DarkNet中, 图片的存储形式是一个行向量,
-    // 向量长度为h*w*3。同时图片被归一化到[0, 1]之间。
+    // darknet的数据加载机制过程:
+    // step1: load_data()中首先创建并启动一个线程调用load_threads,load_threads是实际加载数据的线程,
+    //        再load_threads加载完成前, 主线程会等待;
+    // step2: 在load_threads中通过循环方式, 创建args.threads个线程, 每个线程分别都与函数
+    //        run_thread_loop绑定.
+    // step3: 每个线程的run_thread_loop中调用load_thread(), load_thread()调用
+    //        load_thread(args_local)函数进行数据读取,
     // 多线程数据加载: https://blog.csdn.net/u012927281/article/details/86550702
-    pthread_t load_thread = load_data(args);  // 这里在进行数据加载!后期需要重点分析.
+    pthread_t load_thread = load_data(args);
 
     int count = 0;
     double time_remaining, avg_time = -1, alpha_time = 0.01;

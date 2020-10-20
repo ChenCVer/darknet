@@ -1866,8 +1866,8 @@ void *run_thread_loop(void *ptr)
 }
 
 
-/*
-** 开辟多个线程读入图片数据, 读入数据存储至ptr.d中(主要调用load_in_thread()函数完成)
+/**
+** 开辟多个线程读入图片数据, 读入数据存储至ptr.d中(主要调用run_thread_loop()函数中的load_thread()完成)
 ** 输入： ptr    包含所有线程要读入图片数据的信息(读入多少张, 开几个线程读入, 读入图片最终的宽高, 图片路径等等)
 ** 返回： void*  万能指针(实际上不需要返回什么)
 ** 说明： 1) load_threads()是一个指针函数, 只是一个返回变量为void*的普通函数, 不是函数指针
@@ -1880,35 +1880,34 @@ void *run_thread_loop(void *ptr)
 */
 void *load_threads(void *ptr)
 {
-    //srand(time(0));
     int i;
-    // 先使用(load_args*)强转void*指针, 而后取ptr所指内容赋值给args
+    // 先使用(load_args*)强转void*指针, 而后取ptr所指内容赋值给args.
     // 虽然args不是指针, args是深拷贝了ptr中的内容(也就是将所有变量复制一份, 对于指针来说, 只是复制了指针的的值,
     // 也就是指针所指向的内存空间的地址, 但是并没有把内存空间的内容复制一份, 所以, args和ptr中的指针变量共享内存空间),
     // 但是要知道ptr(也就是load_args数据类型)有很多的指针变量, args深拷贝将拷贝这些指针变量到args中(这些指针变量本身
     // 对ptr来说就是内容,而args所指的值是args的内容, 不是ptr的, 不要混为一谈), 因此, args与ptr将会共享所有指针变量所指的内容.
     load_args args = *(load_args *)ptr;
-    if (args.threads == 0) args.threads = 1;  // args.threads = 1是为单线程, 也即不存在多线程概念.
-    // 另指针变量out=args.d，使得out与args.d指向统一块内存，之后，args.d所指的内存块会变(反正也没什么用了，变就变吧)，
-    // 但out不会变，这样可以保证out与最原始的ptr指向同一块存储读入图片数据的内存块，因此最终将图片读到out中，
-    // 实际就是读到了最原始的ptr中，比如train_detector()函数中定义的args.d中
-    data *out = args.d;
-    int total = args.n;  // 读入图片的总张数= batch * subdivision * ngpus, 可参见train_detector()函数中的赋值
+    if (args.threads == 0) args.threads = 1;
+    // 另指针变量out=args.d,使得out与args.d指向同一块内存,之后,args.d所指的内存块会变但out不会变,
+    // 这样可以保证out与最原始的ptr指向同一块存储读入图片数据的内存块,因此最终将图片读到out中,
+    // 实际就是读到了最原始的ptr中,比如train_detector()函数中定义的args.d中.
+    data *out = args.d;  // out指针初始化时, 给的是d中的地址.
+    int total = args.n;  // 读入图片的总张数=batch*subdivision*ngpus,可参见train_detector()函数中的赋值
     free(ptr);
     // 释放ptr: ptr是传入的指针变量, 传入的指针变量本身也是按值传递的, 即传入函数之后, 指针变量得到复制, 函数内的形参ptr
     // 获取外部实参的值之后, 二者本身没有关系, 但是由于是指针变量, 二者之间又存在一丝关系, 那就是函数内形参与函数外实参指向
-    // 同一块内存. 又由于函数外实参内存是动态分配的, 因此函数内的形参可以使用free()函数进行内存释放, 但一般不推荐这么做, 因为函数内释放内存, 
-    // 会影响函数外实参的使用, 可能使之成为野指针, 那为什么这里可以用free()释放ptr呢, 不会出现问题吗？
+    // 同一块内存. 又由于函数外实参内存是动态分配的, 因此函数内的形参可以使用free()函数进行内存释放, 但一般不推荐这么做,
+    // 因为函数内释放内存, 会影响函数外实参的使用, 可能使之成为野指针, 那为什么这里可以用free()释放ptr呢, 不会出现问题吗?
     // 其一, 因为ptr是一个结构体, 是一个包含众多的指针变量的结构体, 如data* d等(当然还有其他非指针变量如int h等), 
     // 直接free(ptr)将会导致函数外实参无法再访问非指针变量int h等(实际经过测试, 在gcc编译器下, 能访问但是值被重新初始化为0), 
-    // 因为函数内形参和函数外实参共享一块堆内存, 而这些非指针变量都是存在这块堆内存上的, 内存一释放, 就无法访问了；
+    // 因为函数内形参和函数外实参共享一块堆内存, 而这些非指针变量都是存在这块堆内存上的, 内存一释放, 就无法访问了;
     // 但是对于指针变量, free(ptr)将无作为(这个结论也是经过测试的, 也是用的gcc编译器), 不会释放或者擦写掉ptr指针变量本身的值, 
     // 当然也不会影响函数外实参, 更不会牵扯到这些指针变量所指的内存块, 总的来说, 
     // free(ptr)将使得ptr不能再访问指针变量(如int h等, 实际经过测试, 在gcc编译器下, 能访问但是值被重新初始化为0), 
     // 但其指针变量本身没有受影响, 依旧可以访问；对于函数外实参, 同样不能访问非指针变量, 而指针变量不受影响, 依旧可以访问. 
     // 其二, darknet数据读取的实现一层套一层(似乎有点罗嗦, 总感觉代码可以不用这么写的:)), 具体调用过程如下：
     // load_data(load_args args)->load_threads(load_args* ptr)->
-    // load_data_in_thread(load_args args)->load_thread(load_args* ptr),
+    // run_thread_loop(load_args args)->load_thread(load_args* ptr),
     // 就在load_data()中, 重新定义了ptr, 并为之动态分配了内存, 且深拷贝了传给load_data()函数的值args,
     // 也就是说在此之后load_data()函数中的args除了其中的指针变量指着同一块堆内存之外,二者的非指针变量再无瓜葛,
     // 不管之后经过多少个函数, 对ptr的非指针变量做了什么改动, 比如这里直接free(ptr), 使得非指针变量值为0,
@@ -1928,7 +1927,10 @@ void *load_threads(void *ptr)
     //      指定了编译器为gcc), darknet的编译会不会有什么问题?
     //      关于free(), 可以看看：http://blog.sina.com.cn/s/blog_615ec1630102uwle.html,
     //      文章最后有一个很有意思的比喻, 但意思好像就和我这里说的有点不一样了(到底是不是编译器搞得鬼呢?).
-    data* buffers = (data*)xcalloc(args.threads, sizeof(data));  // 每一个线程都会读入一个data, 定义并分配args.thread个data的内存
+
+    // 每一个线程独自在buffers占用对应的数据空间.
+    data* buffers = (data*)xcalloc(args.threads, sizeof(data));
+
     if (!threads) {
         // 此处定义了多个线程(指针)
         threads = (pthread_t*)xcalloc(args.threads, sizeof(pthread_t));
@@ -1937,7 +1939,7 @@ void *load_threads(void *ptr)
         // 1. 并行设备的硬件寄存器(如: 状态寄存器)
         // 2. 一个中断服务子程序中会访问到的非自动变量(Non-automatic variables)
         // 3. 多线程应用中被几个任务共享的变量
-        run_load_data = (volatile int *)xcalloc(args.threads, sizeof(int));  // 这个run_load_data作用?
+        run_load_data = (volatile int *)xcalloc(args.threads, sizeof(int));
         args_swap = (load_args *)xcalloc(args.threads, sizeof(load_args));
         fprintf(stderr, " Create %d permanent cpu-threads \n", args.threads);
         for (i = 0; i < args.threads; ++i) {
@@ -1952,14 +1954,14 @@ void *load_threads(void *ptr)
 
     for (i = 0; i < args.threads; ++i) {
         // 此处就承应了上面的注释, args.d指针变量本身发生了改动, 使得本函数的args.d与out不再指向同一块内存,
-        // 改为指向buffers指向的某一段内存, 因为下面的load_data_in_thread()函数统一了结口,需要输入一个load_args类型参数,
+        // 改为指向buffers指向的某一段内存, 因为下面的run_thread_loop函数统一了结口,需要输入一个load_args类型参数,
         // 实际是想把图片数据读入到buffers[i]中,只能令args.d与buffers[i]指向同一块内存.
         args.d = buffers + i;
-        // 下面这句很有意思，因为有多个线程，所有线程读入的总图片张数为total，需要将total均匀的分到各个线程上，
-        // 但很可能会遇到total不能整除的args.threads的情况，比如total = 61, args.threads =8,显然不能做到
-        // 完全均匀的分配，但又要保证读入图片的总张数一定等于total，用下面的语句刚好在尽量均匀的情况下，
-        // 保证总和为total，比如61,那么8个线程各自读入的照片张数分别为：7, 8, 7, 8, 8, 7, 8, 8
-        args.n = (i + 1) * total / args.threads - i * total / args.threads;
+        // 下面这句很有意思,因为有多个线程,所有线程读入的总图片张数为total,需要将total均匀的分到各个线程上,
+        // 但很可能会遇到total不能整除的args.threads的情况,比如total = 61, args.threads =8,显然不能做到
+        // 完全均匀的分配,但又要保证读入图片的总张数一定等于total,用下面的语句刚好在尽量均匀的情况下，
+        // 保证总和为total,比如61,那么8个线程各自读入的照片张数分别为: 7, 8, 7, 8, 8, 7, 8, 8
+        args.n = (i + 1) * total / args.threads - i * total / args.threads;  // 每个线程读取的图片张数.
         // 使用互斥锁(互斥)可以使线程按顺序执行.
         // pthread_mutex_lock函数操作是阻塞调用的, 也就是说, 如果这个锁此时正在被其它线程占用,
         // 那么pthread_mutex_lock()调用会进入到这个锁的排队队列中,并会进入阻塞状态,直到拿到锁之后才会返回.
@@ -2039,11 +2041,11 @@ void free_load_threads(void *ptr)
  * load_data() -> load_threads() -> run_thread_loop() -> load_thread()
 (1)load_data中首先启动一个线程调用load_threads,load_threads是实际加载数据的线程,再load_threads加载完成前,
    主线程会等待。
-(2)在load_threads通过循环方式,共调用run_thread_loop函数batchsize次.数据加载过程在run_thread_loop函数中完成。
+(2)在load_threads通过循环方式, 创建并启动args.threads个线程, 每个线程都与run_thread_loop绑定,分别加载数据.
 */
 pthread_t load_data(load_args args)
 {
-    pthread_t thread;  // 定义一个线程ID
+    pthread_t thread;  // 定义一个线程ID, 线程变量名为: thread
     // 深拷贝args到ptr(虽说是深拷贝,但要注意args还有很多的指针变量,所有这些指针变量,ptr与args都指向同一内存块)
     struct load_args* ptr = (load_args*)xcalloc(1, sizeof(struct load_args));
     *ptr = args;
