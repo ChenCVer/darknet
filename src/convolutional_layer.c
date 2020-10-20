@@ -1856,6 +1856,8 @@ void update_convolutional_layer(convolutional_layer l, int batch, float learning
     // l.weight_updates即为∂E/∂w_ij=a_i*δ_j;
     // l.weight_updates=l.weight_updates-decay*batch*l.weights;
     axpy_cpu(l.nweights, -decay*batch, l.weights, 1, l.weight_updates, 1);
+    // TODO: Note: 梯度下降法中其参数更新公式: w_i+1=w_i-lr*∂Loss/∂w_i, darknet梯度求解时采用的是
+    //  负梯度形式, 因此, 这里代码中ALPHA传入的是正号, 更新公式变成: w_i+1=w_i+(-lr*∂Loss/∂w_i)
     // l.weights=l.weights-(learning_rate/batch)*l.weight_updates
     axpy_cpu(l.nweights, learning_rate / batch, l.weight_updates, 1, l.weights, 1);
     // l.weight_updates = momentum * l.weight_updates
