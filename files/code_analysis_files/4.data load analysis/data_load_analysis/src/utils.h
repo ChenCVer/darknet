@@ -26,10 +26,12 @@ typedef struct data{
     box **boxes;
     // 下面是演示用:
     int* rand_datas;
+    int num_rand_datas;
 }data;
 
 typedef struct load_args{
-    int threads;
+    int threads;    // 线程数
+    int thread_id;  // 线程ID
     char **paths;
     char *path;
     int n;
@@ -52,6 +54,8 @@ data concat_data(data d1, data d2);
 void free_matrix(matrix m);
 
 void free_data(data d);
+
+int* concat_rand_data(data rand_datas_1, data rand_datas_2);
 
 data concat_datas(data *d, int n);
 

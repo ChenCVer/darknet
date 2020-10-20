@@ -1,9 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
-#include <string.h>
 #include "src/utils.h"
 
+// TODO: 后期考虑加入互斥锁.
 
 void* load_thread(void* ptr){
     load_args a = *(load_args*)ptr;
@@ -13,24 +13,25 @@ void* load_thread(void* ptr){
     int i, rand_data;
     // 该数据用于后期拼装
     a.d->rand_datas = (int*)malloc(a.n*sizeof(int));
+    a.d->num_rand_datas = sample_num;
 
     for(i = 0; i < sample_num; i++){
         rand_data = rand() % 100;
         (a.d->rand_datas)[i] = rand_data;
     }
 
-    printf("rand_datas = ");
+    // debug:
+    printf("thread_id[%d]: rand_datas = ", a.thread_id);
     for(i = 0; i < sample_num; i++)
         printf(" %d ",a.d->rand_datas[i]);
-
     printf("\n");
 }
 
 
-pthread_t load_data_in_thread(struct load_args args)
+pthread_t load_data_in_thread(load_args args)
 {
     pthread_t thread;
-    struct load_args *ptr = calloc(1, sizeof(struct load_args));
+    load_args *ptr = calloc(1, sizeof(load_args));
     *ptr = args;
     if(pthread_create(&thread, 0, load_thread, ptr))
         error("Thread creation failed");
@@ -43,16 +44,23 @@ void *load_threads(void *ptr)
     int i;
     load_args args = *(load_args *)ptr;
     if (args.threads == 0) args.threads = 1;
+    // out和args.d指向的内存空间首地址一样, args.d指向buffer, out也就指向buffer
     data *out = args.d;
     int total = args.n;
     free(ptr);
 
-    data *buffers = calloc(args.threads, sizeof(data));
-    pthread_t *threads = calloc(args.threads, sizeof(pthread_t));
+    // 开辟args.threads个data类型大小的内存空间, buffers是data*类型
+    // buffers指向:[data_0, data_1,...,data_args_threads-1]
+    data* buffers = calloc(args.threads, sizeof(data));
+    // 开辟args.threads个pthread_t类型大小的内存空间, threads是pthread_t*类型
+    pthread_t* threads = calloc(args.threads, sizeof(pthread_t));
 
     for(i = 0; i < args.threads; ++i){
-        args.d = buffers + i;
+        args.d = buffers + i;  // args.d = buffers[i];
+        // args.n也即buffers[i]->rand_datas装载的样本个数
         args.n = (i+1) * total/args.threads - i * total/args.threads;
+        // load_data_in_thread负责创建并启动子线程, 并返回线程ID给threads[i].
+        args.thread_id = i;
         threads[i] = load_data_in_thread(args);  // 这里创建并启动子线程.
     }
 
@@ -60,9 +68,11 @@ void *load_threads(void *ptr)
         pthread_join(threads[i], 0);  // 等待所有子线程的数据load完毕.
     }
 
-    // 将每个线程load的数据拼接在一起.用模拟数据rand_datas进行仿真
+    // concat_datas()负责将buffers中的每个data中的rand_datas拼起来, 放在out所指向的内存空间.
+    // 由之前的代码可以看出, out指向buffer数组, 这样最终通过concat_datas函数, 实现了将结果从函数
+    // 传出到主函数main中.
     *out = concat_datas(buffers, args.threads);
-    out->shallow = 0;
+    out->shallow = 0;  // shallow标记作用是什么?
 
     for(i = 0; i < args.threads; ++i){
         buffers[i].shallow = 1;
@@ -87,57 +97,24 @@ pthread_t load_data(load_args args)
 }
 
 
-
 int main(int argc, char** argv) {
-
-    FILE* fp = NULL;
-    char* filepath = "/home/cxj/Desktop/project/data_load_analysis/2007_train.txt";
-    fp = fopen(filepath, "r");
-    if(fp == NULL){
-        perror("fopen");
-        return -1;
-    }
-    char buf[100] = {0};
-    int total_imgs = 0;
-    while(!feof(fp)){
-        char* p = fgets(buf, sizeof(buf), fp);
-        if (p != NULL){
-            total_imgs++;
-        }
-    }
-    fclose(fp);
-    fp = NULL;
-
-    // 构建空间
-    char** paths = (char**)malloc(total_imgs * sizeof(char*));
-    int i = 0;
-    FILE* fp2 = fopen(filepath, "r");
-    if (fp2 == NULL){
-        perror("fopen");
-        return -1;
-    }
-    while (!feof(fp2)){
-        char* p = fgets(buf, sizeof(buf), fp2);
-        if(p != NULL) {
-            paths[i] = malloc(100 * sizeof(char));
-            memset(paths[i], 0, 100);
-            strcpy(paths[i], p);
-            i++;
-        }
-    }
-    fclose(fp2);
-    fp2 = NULL;
-
+    int i;
     data train, buffer;
     load_args args = {0};
-    args.paths = paths;   // 训练数据路径的字符串数组
-    args.m = total_imgs;  // 训练数据总样本数
-    args.n = 16;          // batchsize
-    args.threads = 3;     // 线程数
-    args.d = &buffer;     // 获取数据的地址.
+    args.n = 32;            // batchsize
+    args.threads = 7;      // 线程数
+    args.d = &buffer;       // args.d指向buffer
 
     pthread_t load_thread = load_data(args);
     pthread_join(load_thread, 0);
+    train = buffer;
+
+    printf("-------------------------\n");
+    printf("train.rand_datas = ");
+    for(i = 0; i < args.n; i++)
+        printf("%d ", train.rand_datas[i]);
+    printf("\n");
+
     printf("data load compeleted...\n");
 
     return 0;
