@@ -31,7 +31,7 @@ typedef struct data{
 
 typedef struct load_args{
     int threads;    // 线程数
-    int thread_id;  // 线程ID
+    int thread_id;  // 记录开辟的第几个线程
     char **paths;
     char *path;
     int n;

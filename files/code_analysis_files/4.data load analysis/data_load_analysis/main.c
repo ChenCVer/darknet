@@ -102,20 +102,18 @@ int main(int argc, char** argv) {
     data train, buffer;
     load_args args = {0};
     args.n = 32;            // batchsize
-    args.threads = 7;      // 线程数
+    args.threads = 7;       // 线程数
     args.d = &buffer;       // args.d指向buffer
 
     pthread_t load_thread = load_data(args);
     pthread_join(load_thread, 0);
     train = buffer;
-
+    printf("data load compeleted...\n");
     printf("-------------------------\n");
     printf("train.rand_datas = ");
     for(i = 0; i < args.n; i++)
         printf("%d ", train.rand_datas[i]);
     printf("\n");
-
-    printf("data load compeleted...\n");
 
     return 0;
 }
