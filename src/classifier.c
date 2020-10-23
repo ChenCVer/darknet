@@ -59,7 +59,7 @@ void train_classifier(char *datacfg, char *cfgfile, char *weightfile, int *gpus,
         // 如果有clear参数, 把网络seen清空为0
         if (clear) {
             *nets[i].seen = 0;  // 目前已经读入的图片张数(网络已经处理的图片张数)
-            *nets[i].cur_iteration = 0;
+            *nets[i].cur_iteration = 0;  // 网络迭代次数
         }
 
         nets[i].learning_rate *= ngpus;  // 学习率与显卡数量的关系对应, 第几块显卡对应几倍学习率

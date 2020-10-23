@@ -1014,9 +1014,10 @@ void blend_truth(float *new_truth, int boxes, int truth_size, float *old_truth)
 }
 
 
-void blend_truth_mosaic(float *new_truth, int boxes, int truth_size, float *old_truth, int w, int h, float cut_x, float cut_y, int i_mixup,
-    int left_shift, int right_shift, int top_shift, int bot_shift,
-    int net_w, int net_h, int mosaic_bound)
+void blend_truth_mosaic(float *new_truth, int boxes, int truth_size, float *old_truth,
+                        int w, int h, float cut_x, float cut_y, int i_mixup,
+                        int left_shift, int right_shift, int top_shift, int bot_shift,
+                        int net_w, int net_h, int mosaic_bound)
 {
     const float lowest_w = 1.F / net_w;
     const float lowest_h = 1.F / net_h;
@@ -1169,6 +1170,30 @@ void blend_truth_mosaic(float *new_truth, int boxes, int truth_size, float *old_
 
 #include "http_stream.h"
 
+
+/**
+** 可以参考,看一下对图像进行jitter处理的各种效果:
+** https://medium.com/@vivek.yadav/dealing-with-unbalanced-data-generating-additional-data-by-jittering-the-original-image-7497fe2119c3
+** 从所有训练图片中,随机读取n张,并对这n张图片进行数据增强,同时矫正增强后的数据标签信息。最终得到的图片的宽高为w,h(原始训练集中的图片尺寸不定),也就是网络能够处理的图片尺寸,
+** 数据增强包括：对原始图片进行宽高方向上的插值缩放(两方向上缩放系数不一定相同),下面称之为缩放抖动；随机抠取或者平移图片(位置抖动)；
+** 在hsv颜色空间增加噪声(颜色抖动)；左右水平翻转,不含旋转抖动。
+** 输入： n         一个线程读入的图片张数(详见函数内部注释)
+**       paths     所有训练图片所在路径集合,是一个二维数组,每一行对应一张图片的路径(将在其中随机取n个)
+**       m         paths的行数,也即训练图片总数
+**       w         网络能够处理的图的宽度(也就是输入图片经过一系列数据增强、变换之后最终输入到网络的图的宽度)
+**       h         网络能够处理的图的高度(也就是输入图片经过一系列数据增强、变换之后最终输入到网络的图的高度)
+**       boxes     每张训练图片最大处理的矩形框数(图片内可能含有更多的物体,即更多的矩形框,那么就在其中随机选择boxes个参与训练,具体执行在fill_truth_detection()函数中)
+**       classes   类别总数,本函数并未用到(fill_truth_detection函数其实并没有用这个参数)
+**       jitter    这个参数为缩放抖动系数,就是图片缩放抖动的剧烈程度,越大,允许的抖动范围越大(所谓缩放抖动,就是在宽高上插值缩放图片,宽高两方向上缩放的系数不一定相同)
+**       hue       颜色(hsv颜色空间)数据增强参数：色调(取值0度到360度)偏差最大值,实际色调偏差为-hue~hue之间的随机值
+**       saturation 颜色(hsv颜色空间)数据增强参数：色彩饱和度(取值范围0~1)缩放最大值,实际为范围内的随机值
+**       exposure  颜色(hsv颜色空间)数据增强参数：明度(色彩明亮程度,0~1)缩放最大值,实际为范围内的随机值
+** 返回： data类型数据,包含一个线程读入的所有图片数据(含有n张图片)
+** 说明： 最后四个参数用于数据增强,主要对原图进行缩放抖动,位置抖动(平移)以及颜色抖动(颜色值增加一定噪声),抖动一定程度上可以理解成对图像增加噪声。
+**       通过对原始图像进行抖动,实现数据增强。最后三个参数具体用法参考本函数内调用的random_distort_image()函数
+** 说明2：从此函数可以看出,darknet对训练集中图片的尺寸没有要求,可以是任意尺寸的图片,因为经该函数处理(缩放/裁剪)之后,
+**       不管是什么尺寸的照片,都会统一为网络训练使用的尺寸
+**/
 data load_data_detection(int n, char **paths, int m, int w, int h, int c, int boxes, int truth_size,
                          int classes, int use_flip, int use_gaussian_noise, int use_blur, int use_mixup,
                          float jitter, float resize, float hue, float saturation, float exposure, int mini_batch,
@@ -1202,12 +1227,13 @@ data load_data_detection(int n, char **paths, int m, int w, int h, int c, int bo
             cut_y[i] = rand_int(h*min_offset, h*(1 - min_offset));
         }
     }
-
+    // 初始化为0,清楚内存中之前的旧值(类似data d ={};, 参考：https://www.zhihu.com/question/46405621/answer/101218929)
     data d = {0};
     d.shallow = 0;
-
-    d.X.rows = n;
-    d.X.vals = (float**)xcalloc(d.X.rows, sizeof(float*));
+    // n实际不是总的n,而是分配到该线程上的n,比如总共要读入128张图片,共开启8个线程读数据,那么本函数中的n为16,而不是总数128
+    d.X.rows = n;  // rows表示行数, 有多少行就有多少张图片
+    //d.X为一个matrix类型数据, 其中d.X.vals是其具体数据, 是指针的指针(即为二维数组),此处先为第一维动态分配内存
+    d.X.vals = (float**)xcalloc(d.X.rows, sizeof(float*));  // 每个float*指针都指向一个大小为d.X.cols的float类型数组
     d.X.cols = h*w*c;
 
     float r1 = 0, r2 = 0, r3 = 0, r4 = 0, r_scale = 0;
@@ -1221,16 +1247,21 @@ data load_data_detection(int n, char **paths, int m, int w, int h, int c, int bo
         if (i_mixup) augmentation_calculated = 0;   // recalculate augmentation for the 2nd sequence if(track==1)
 
         char **random_paths;
-        if (track) random_paths = get_sequential_paths(paths, n, m, mini_batch, augment_speed, contrastive);
-        else random_paths = get_random_paths_custom(paths, n, m, contrastive);
+        if (track)
+            random_paths = get_sequential_paths(paths, n, m, mini_batch, augment_speed, contrastive);
+        else
+            // paths包含所有训练图片的路径, get_random_paths_custom函数从总数据库m中随机提出n条, 即为此次读入的n张图片的路径
+            random_paths = get_random_paths_custom(paths, n, m, contrastive);
 
         for (i = 0; i < n; ++i) {
             float *truth = (float*)xcalloc(truth_size * boxes, sizeof(float));
             const char *filename = random_paths[i];
 
             int flag = (c >= 3);
+
             mat_cv *src;
-            src = load_image_mat_cv(filename, flag);
+            src = load_image_mat_cv(filename, flag);  // 读取原始图片数据
+
             if (src == NULL) {
                 printf("\n Error in load_data_detection() - OpenCV \n");
                 fflush(stdout);
@@ -1243,6 +1274,7 @@ data load_data_detection(int n, char **paths, int m, int w, int h, int c, int bo
             int oh = get_height_mat(src);
             int ow = get_width_mat(src);
 
+            // 缩放抖动大小: 缩放抖动系数乘以原始图宽高即得像素单位意义上的缩放抖动
             int dw = (ow*jitter);
             int dh = (oh*jitter);
 
@@ -1386,9 +1418,9 @@ data load_data_detection(int n, char **paths, int m, int w, int h, int c, int bo
                 else if (i_mixup == 1) {
                     image old_img = make_empty_image(w, h, c);
                     old_img.data = d.X.vals[i];
-                    //show_image(ai, "new");
-                    //show_image(old_img, "old");
-                    //wait_until_press_key_cv();
+                    // show_image(ai, "new");
+                    // show_image(old_img, "old");
+                    // wait_until_press_key_cv();
                     blend_images_cv(ai, 0.5, old_img, 0.5);
                     blend_truth(d.y.vals[i], boxes, truth_size, truth);
                     free_image(old_img);
@@ -1476,13 +1508,6 @@ data load_data_detection(int n, char **paths, int m, int w, int h, int c, int bo
             release_mat(&src);
             free(truth);
         }
-
-        /*
-        // debug:
-        int k;
-        for(k = 0; k < n; k++)
-            printf("random_paths[%d] = %s\n", k, random_paths[k]);
-         */
 
         if (random_paths) free(random_paths);
     }

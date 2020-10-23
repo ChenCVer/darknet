@@ -3,7 +3,9 @@
 #include <pthread.h>
 #include "src/utils.h"
 
-// TODO: 后期考虑加入互斥锁.
+// TODO: 关于C语言多线程的知识可以参考:https://www.cnblogs.com/zzdbullet/p/9526130.html
+
+pthread_mutex_t mtx_load_data = PTHREAD_MUTEX_INITIALIZER;
 
 void* load_thread(void* ptr){
     load_args a = *(load_args*)ptr;
@@ -20,11 +22,14 @@ void* load_thread(void* ptr){
         (a.d->rand_datas)[i] = rand_data;
     }
 
-    // debug:
+    pthread_mutex_lock(&mtx_load_data);    // 互斥锁上锁, 阻塞调用.
+
     printf("thread_id[%d]: rand_datas = ", a.thread_id);
     for(i = 0; i < sample_num; i++)
         printf(" %d ",a.d->rand_datas[i]);
     printf("\n");
+
+    pthread_mutex_unlock(&mtx_load_data);  // 互斥锁解锁
 }
 
 
@@ -33,6 +38,8 @@ pthread_t load_data_in_thread(load_args args)
     pthread_t thread;
     load_args *ptr = calloc(1, sizeof(load_args));
     *ptr = args;
+    // 初始化随机种子
+    srand((unsigned )time(NULL));
     if(pthread_create(&thread, 0, load_thread, ptr))
         error("Thread creation failed");
     return thread;
@@ -106,7 +113,7 @@ int main(int argc, char** argv) {
     args.d = &buffer;       // args.d指向buffer
 
     pthread_t load_thread = load_data(args);
-    pthread_join(load_thread, 0);
+    pthread_join(load_thread, 0);  // 主程序等待load_thread线程执行完毕, 再往下执行
     train = buffer;
     printf("data load compeleted...\n");
     printf("-------------------------\n");
