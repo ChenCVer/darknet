@@ -362,7 +362,7 @@ struct layer {
     float mask_scale;
     float class_scale;
     int bias_match;
-    float random;
+    float random;  // 训练过程中是否改变输入图像分辨率
     float ignore_thresh;
     float truth_thresh;
     float iou_thresh;
