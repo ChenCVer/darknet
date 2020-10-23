@@ -13,11 +13,11 @@
 
 ​		很多朋友希望我也能出一个darknet的解读系列，后来我想了想，我的很多解读其实都放在代码中了，在代码中有详尽的解析。对于一些特别需要用画图的形式才能说明的，我也画了图，比如，darknet关于配置解读这块，最终形成的数据结构如下(该图片的ppt格式文件在files文件夹下的code_analysis_files的1.cfg analysis中)：
 
-![](files/code_analysis_files/1.cfg analysis/read_cfg.png)
+![](read_cfg.png)
 
 再比如关于img2col也画了详细的说明图如下(该图片的ppt格式文件放在files文件夹下的code_analysis_files的2.im2col中，为了方便朋友们能debug中间过程，我也同时写了im2col对应的pyhton代码，放在同一个文件夹下)：
 
-![](files/code_analysis_files/2.img2col/im2col.png)
+![](im2col.png)
 
 关于darknet的数据加载机制，由于在整个代码中要想清晰知道data的load过程已经最终将各个线程的数据拼装在一个内存空间中，我也单独将这一部分代码从整个工程代码中抽取出来，并用随机数模拟这个过程。代码可以直接运行查看（代码放在：files/code_analysis_files/4.data load analysis）。
 
