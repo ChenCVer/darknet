@@ -2,7 +2,10 @@
 
 ​		2019年就萌生一个想法，想深入研究一个深度学习框架，从code上将这个黑盒子的神秘面纱揭开，后续由于工作太忙，没有太多精力投入，从2020年8月份开始，诸多工作接近尾声，开始想投入一段时间研究一个底层框架。对比了多个框架，发现darknet是一个较为轻型的完全基于C与CUDA的开源深度学习框架，没有任何依赖项（OpenCV都可以不用），移植性非常好，支持CPU与GPU两种计算方式。真正可以对神经网络的组件一探究竟，是提高自己对深度学习有效范本。
 
-​		本人对darknet的解读，为期接近3个月时间，从2020年8月5日到至今(10月23日)，期间几乎查遍了CSDN，知乎，github所有能看到关于darknet的解读资源，这里特别感谢github上:  https://github.com/hgpvision/darknet和 https://github.com/BBuf/Darknet。
+​		本人对darknet的解读，为期接近3个月时间，从2020年8月5日到至今(10月23日)，期间几乎查遍了CSDN，知乎，github所有能看到关于darknet的解读资源，这里特别感谢github上:
+
+1. https://github.com/hgpvision/darknet
+2.  https://github.com/BBuf/Darknet
 
 ​		期间也和他们私底下有过诸多交流。此外，也感谢那些微信上的联系人，经过他们的交流，使得让我疑惑的很多问题逐渐变得清晰起来。
 
