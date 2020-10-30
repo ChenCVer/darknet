@@ -328,7 +328,7 @@ void forward_region_layer(const region_layer l, network_state state)
                                          logistic_gradient(l.output[index + 4]));
                     else{
                         if (best_iou > l.thresh) {
-                            // 如果该anchor是正样本, 则需要清零处理.
+                            // 这里是忽略样本, 不是正样本
                             l.delta[index + 4] = 0;
                             if(l.classfix > 0){
                                 delta_region_class(l.output, l.delta, index + 5, best_class_id,l.classes,
@@ -430,7 +430,7 @@ void forward_region_layer(const region_layer l, network_state state)
 
             if (l.map) class_id = l.map[class_id];
             // 从l.outputs[best_index+5]~l.outputs[best_index+5+classes]是存储这该pred_bbox的预测类别概率值.
-            // delta_region_class主要是计算类别损失对应的梯度信息
+            // delta_region_class主要是计算类别损失对应的梯度信息, 只有正样本才计算类别损失.
             delta_region_class(l.output, l.delta, best_index + 5, class_id, l.classes,
                                l.softmax_tree, l.class_scale, &avg_cat, l.focal_loss);
             ++count;
