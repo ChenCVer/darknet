@@ -27,3 +27,5 @@
 
 注意：本代码从AB大神的github clone的日期是2020年8月5日，代码的编译与AB大神的方法一样，如果你想一步一步调试查看中间过程，可以用CLion  IDE进行代码分析。
 
+### Darknet序列解读
+#### 1. [darknet框架权威解读系列一：框架构成](https://mp.weixin.qq.com/s/cAiVMweWybofW0vuZjD18A)
