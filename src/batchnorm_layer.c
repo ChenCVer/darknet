@@ -236,7 +236,7 @@ void forward_batchnorm_layer(layer l, network_state state)
     }
     // 预测状态
     else{
-        // 预测时, 采用滑动平均值参与计算.
+        // 预测时, 采用滑动平均值参与计算: l.output = (l.output - l.rolling_mean) / sqrt(l.rolling_variance)
         normalize_cpu(l.output, l.rolling_mean, l.rolling_variance, l.batch, l.out_c, l.out_h*l.out_w);
     }
     // 下面两句话为: l.output = l.scales * l.output + l.biases
